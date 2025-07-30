@@ -79,11 +79,11 @@ class GazePredictor(nn.Module):
     def __init__(
         self,
         # backbone_name: str = 'dino_vitb14',
-        hidden_dims: list, dropout: float
+        hidden_dims: list, dropout: float, dino_model_name: str
     ):
         super().__init__()
         # 1) Load and freeze the DINOv2 backbone
-        self.backbone = torch.hub.load('facebookresearch/dinov2', DINO_MODEL_NAME)
+        self.backbone = torch.hub.load('facebookresearch/dinov2', dino_model_name)
         for param in self.backbone.parameters():
             param.requires_grad = False
 
@@ -177,7 +177,7 @@ def train(cfg: DictConfig):
     )
 
     # Build model, optimizer, and loss
-    model = GazePredictor(hidden_dims=config.hidden_dims, dropout=config.dropout)
+    model = GazePredictor(hidden_dims=config.hidden_dims, dropout=config.dropout, dino_model_name=config.dino_model_name)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     criterion = torch.nn.CrossEntropyLoss()
 
