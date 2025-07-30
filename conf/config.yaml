@@ -1,0 +1,28 @@
+defaults:
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+wandb:
+  project: my_project        # replace with your project name
+  entity: my_entity         # replace with your WandB entity (team/user)
+
+sweep:
+  method: bayes             # Bayesian optimization
+  metric:
+    name: val_loss          # metric to optimize
+    goal: minimize          # minimize validation loss
+  parameters:
+    learning_rate:
+      distribution: uniform
+      min: 1e-5
+      max: 1e-2
+    batch_size:
+      distribution: categorical
+      values: [32, 64, 128]
+    dropout:
+      distribution: uniform
+      min: 0.0
+      max: 0.5
+
+training:
+  epochs: 10                # default number of epochs
