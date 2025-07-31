@@ -109,11 +109,6 @@ class GazePredictor(nn.Module):
             x: (B, 3, 224, 224) input images.
         Returns:
             (B, 16 * 16) spatial softmax probabilities
-
-            dict with keys:
-              - 'logits': (B, N_patches) raw logits per patch
-              - 'probs':  (B, N_patches) spatial softmax probabilities
-              - 'preds':  (B,) index of max-prob patch
         """
         # Extract last feature map: (B, D, Hf, Wf)
         seq = self.backbone(x)
@@ -126,12 +121,3 @@ class GazePredictor(nn.Module):
         # Spatial softmax over patches
         probs = torch.softmax(logits, dim=-1)
         return probs
-
-        # # Argmax to get predicted patch index
-        # preds = torch.argmax(probs, dim=-1)
-
-        # return {
-        #     'logits': logits,
-        #     'probs': probs,
-        #     'preds': preds
-        # }
