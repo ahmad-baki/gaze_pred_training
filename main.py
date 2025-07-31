@@ -5,7 +5,9 @@ import wandb
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.utils.data import random_split, DataLoader
 
+from helper.dataset import PreprocessedGazeDataset
 from models.gaze_predictor import GazePredictor
 # from data import MyDataset  # Dein Dataset-Import
 
@@ -42,17 +44,7 @@ def train(cfg: DictConfig):
     # Hier holen wir uns nur die hyperparametrischen Werte aus wandb.config
     config = wandb.config
 
-    # DataLoader mit Sweep-Batch-Size
-    train_loader: DataLoader = DataLoader(
-        MyDataset(split="train"),
-        batch_size=config.batch_size,
-        shuffle=True
-    )
-    val_loader: DataLoader = DataLoader(
-        MyDataset(split="val"),
-        batch_size=config.batch_size
-    )
-
+    train_loader, val_loader = get_data_loaders(config)
     # Modell: feste Architektur-Teile aus cfg, Dropout aus Sweep
     model: GazePredictor = GazePredictor(
         hidden_dims=cfg.model.hidden_dims,
@@ -108,6 +100,43 @@ def train(cfg: DictConfig):
         })
 
     run.finish()
+
+def get_data_loaders(config):
+    dataset = PreprocessedGazeDataset(
+        image_dir=config.dataset.image_dir,
+        label_dir=config.dataset.label_dir
+        # transform=config.dataset.transform
+    )
+
+    # split sizes
+    total_size = len(dataset)
+    train_size = int(config.dataset.train_split * total_size)
+    val_size   = total_size - train_size
+
+    # do the split (with a fixed seed for reproducibility)
+    train_dataset, val_dataset = random_split(
+        dataset,
+        [train_size, val_size],
+        generator=torch.Generator().manual_seed(42)
+    )
+
+    # DataLoader für Training und Validierung
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True
+    )
+    print(f"Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
+    return train_loader,val_loader
 
 
 if __name__ == "__main__":

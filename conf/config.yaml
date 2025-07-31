@@ -1,5 +1,6 @@
 defaults:
   - models@model: gaze_pre
+  - dataset@dataset: gaze_dataset
 
 wandb:
   project: hololens2gaze        # replace with your project name
