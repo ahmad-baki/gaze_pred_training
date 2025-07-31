@@ -1,10 +1,9 @@
 defaults:
-  - override hydra/hydra_logging: disabled
-  - override hydra/job_logging: disabled
+  - models@model: gaze_pre
 
 wandb:
-  project: my_project        # replace with your project name
-  entity: my_entity         # replace with your WandB entity (team/user)
+  project: hololens2gaze        # replace with your project name
+  entity: gaze_pred         # replace with your WandB entity (team/user)
 
 sweep:
   method: bayes             # Bayesian optimization
@@ -26,3 +25,5 @@ sweep:
 
 training:
   epochs: 10                # default number of epochs
+  loss_function: ce        # loss function to use: mse, ce
+  optimizer: adam          # optimizer to use: adam, sgd
