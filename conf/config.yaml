@@ -3,8 +3,8 @@ defaults:
   - dataset@dataset: gaze_dataset
 
 wandb:
-  project: hololens2gaze        # replace with your project name
-  entity: gaze_pred         # replace with your WandB entity (team/user)
+  project: test        # replace with your project name
+  entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
 
 sweep:
   method: bayes             # Bayesian optimization
@@ -18,7 +18,7 @@ sweep:
       max: 1e-2
     batch_size:
       distribution: categorical
-      values: [32, 64, 128]
+      values: [32]
     dropout:
       distribution: uniform
       min: 0.0

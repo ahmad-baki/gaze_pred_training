@@ -1,0 +1,14 @@
+{
+    'name': 'experiment_name', 
+'path': '/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/output/experiment_name', 
+'repetitions': 5, 
+'reps_per_job': 1, 
+'reps_in_parallel': 1, 
+'_basic_path': '/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/output', 
+'_experiment_name': 'experiment_name', 
+'_nested_dir': '', 
+'_debug': False, 
+'log_path': '/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/output/experiment_name/log', 
+'_rep_idx': 4, 
+'_rep_log_path': '/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/output/experiment_name/log/rep_04'
+}

@@ -1,0 +1,22 @@
+```# .gitignore file for gaze_pred_training project
+# Ignore Python bytecode files
+*.py[cod]
+# Ignore cache directories
+__pycache__/
+# Ignore virtual environment directories
+venv/
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Ignore log files
+*.log
+# Ignore data files
+data/
+# Ignore model files
+models/
+# Ignore test folder
+test/
+# Ignore vstudio code settings
+.vscode/
+
+/*.pyc
+__pycache__/

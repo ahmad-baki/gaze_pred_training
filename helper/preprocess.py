@@ -78,16 +78,13 @@ TARGET_IMG_HEIGHT = 224
 TARGET_IMG_WIDTH = 224
 TARGET_GAZE_HEIGHT = 16
 TARGET_GAZE_WIDTH = 16
-SOURCE_IMG_DIR = Path('data/images')
-TARGET_IMG_DIR = Path('data/resized_images')
-SOURCE_GAZE_DIR = Path('data/gaze_vectors')
-TARGET_GAZE_DIR = Path('data/resized_gaze_vectors')
+SOURCE_IMG_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/raw')
+TARGET_IMG_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed')
+SOURCE_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/raw')
+TARGET_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed')
 
 if __name__ == "__main__":
-    # Example usage
-    src_directory = Path('path/to/source/dataset')
-    target_directory = Path('path/to/target/dataset')
-
+    print("Starting preprocessing...")
     # Resize images
     resize_images_in_directory(
         src_dir=SOURCE_IMG_DIR,
@@ -95,6 +92,7 @@ if __name__ == "__main__":
         tar_width=TARGET_IMG_WIDTH,
         tar_height=TARGET_IMG_HEIGHT
     )
+    print("Preprocessing completed: Images resized.")
     # Create one-hot encoded gaze vectors
     onehot_vector_gaze_dataset(
         src_dir=SOURCE_GAZE_DIR,
@@ -103,6 +101,7 @@ if __name__ == "__main__":
         tar_height=TARGET_GAZE_HEIGHT,
         flip_vert=True  # Set to False if you don't want to flip the y-coordinate
     )
-    print("Preprocessing completed: Images resized and gaze vectors created.")
+    print("Gaze vectors created.")
+    print("Preprocessing completed.")
 
 

@@ -9,42 +9,47 @@ from torch.utils.data import random_split, DataLoader
 
 from helper.dataset import PreprocessedGazeDataset
 from models.gaze_predictor import GazePredictor
+
 # from data import MyDataset  # Dein Dataset-Import
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-@hydra.main(config_path="configs", config_name="config")
-def main(cfg: DictConfig):
+@hydra.main(config_path="conf", config_name="config")
+def run_main(cfg: DictConfig):
+    print("Running main with config:", cfg)
+    cfg_hydra = cfg
     # Sweep-Definition in ein plain Dict umwandeln
     sweep_cfg = OmegaConf.to_container(
-        cfg.sweep,
+        cfg_hydra.sweep,
         resolve=True,
         throw_on_missing=True
     )
     # Sweep anlegen
     sweep_id = wandb.sweep(
         sweep=sweep_cfg,
-        project=cfg.wandb.project,
-        entity=cfg.wandb.entity
+        project=cfg_hydra.wandb.project,
+        entity=cfg_hydra.wandb.entity
     )
     print(f"Created sweep: {sweep_id}")
 
     # WandB-Agent startet und ruft für jeden Trial train(cfg) auf
-    wandb.agent(sweep_id, function=train, count=1)
+    wandb.agent(sweep_id, function=lambda: train(cfg), count=1)
 
 
-def train(cfg: DictConfig):
+def train(cfg = None):
     # Neue W&B-Run initialisieren und den vollen Hydra-Cfg loggen
     run = wandb.init(
-        project=cfg.wandb.project,
-        entity=cfg.wandb.entity,
-        config=OmegaConf.to_container(cfg, resolve=True) # type: ignore
+        config=None
+        # project=cfg.wandb.project,
+        # entity=cfg.wandb.entity,
+        # config=OmegaConf.to_container(cfg, resolve=True) # type: ignore
     )
     # Hier holen wir uns nur die hyperparametrischen Werte aus wandb.config
     config = wandb.config
-
-    train_loader, val_loader = get_data_loaders(config)
+    print("-" * 20)
+    print("Running train with config:", cfg)
+    train_loader, val_loader = get_data_loaders(cfg)
     # Modell: feste Architektur-Teile aus cfg, Dropout aus Sweep
     model: GazePredictor = GazePredictor(
         hidden_dims=cfg.model.hidden_dims,
@@ -71,6 +76,7 @@ def train(cfg: DictConfig):
         raise ValueError(f"Unsupported loss function: {config.loss}")
 
     # Trainingsschleife mit gesampelten Epochs
+    print(f"Starting training for {config.epochs} epochs...")
     for epoch in range(config.training.epochs):
         model.train()
         total_loss = 0.0
@@ -98,7 +104,7 @@ def train(cfg: DictConfig):
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss
         })
-
+    print(f"Finished training for {config.epochs} epochs.")
     run.finish()
 
 def get_data_loaders(config):
@@ -140,4 +146,4 @@ def get_data_loaders(config):
 
 
 if __name__ == "__main__":
-    main()  # pylint: disable=no-value-for-parameter
+    run_main()  # pylint: disable=no-value-for-parameter

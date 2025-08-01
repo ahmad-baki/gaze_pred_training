@@ -1,0 +1,75 @@
+cpus-per-task: 1
+default:
+- hydra/conf@hydra: config
+job-name: experiment
+mem-per-cpu: 1000
+name: SLURM
+ntasks: 1
+num_parallel_jobs: 120
+partition: dev
+time: 30
+---
+_basic_path: ./.
+_debug: false
+_experiment_name: experiment_name
+_nested_dir: ''
+_rep_idx: 0
+_rep_log_path: ./experiment_name/log/rep_00
+log_path: ./experiment_name/log
+name: experiment_name
+path: ./experiment_name
+repetitions: 5
+reps_in_parallel: 1
+reps_per_job: 1
+---
+_basic_path: ./.
+_debug: false
+_experiment_name: experiment_name
+_nested_dir: ''
+_rep_idx: 1
+_rep_log_path: ./experiment_name/log/rep_01
+log_path: ./experiment_name/log
+name: experiment_name
+path: ./experiment_name
+repetitions: 5
+reps_in_parallel: 1
+reps_per_job: 1
+---
+_basic_path: ./.
+_debug: false
+_experiment_name: experiment_name
+_nested_dir: ''
+_rep_idx: 2
+_rep_log_path: ./experiment_name/log/rep_02
+log_path: ./experiment_name/log
+name: experiment_name
+path: ./experiment_name
+repetitions: 5
+reps_in_parallel: 1
+reps_per_job: 1
+---
+_basic_path: ./.
+_debug: false
+_experiment_name: experiment_name
+_nested_dir: ''
+_rep_idx: 3
+_rep_log_path: ./experiment_name/log/rep_03
+log_path: ./experiment_name/log
+name: experiment_name
+path: ./experiment_name
+repetitions: 5
+reps_in_parallel: 1
+reps_per_job: 1
+---
+_basic_path: ./.
+_debug: false
+_experiment_name: experiment_name
+_nested_dir: ''
+_rep_idx: 4
+_rep_log_path: ./experiment_name/log/rep_04
+log_path: ./experiment_name/log
+name: experiment_name
+path: ./experiment_name
+repetitions: 5
+reps_in_parallel: 1
+reps_per_job: 1
