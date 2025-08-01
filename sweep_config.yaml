@@ -1,0 +1,23 @@
+program: main.py
+method: bayes             # Bayesian optimization
+metric:
+  name: val_loss          # metric to optimize
+  goal: minimize          # minimize validation loss
+parameters:
+  learning_rate:
+    distribution: uniform
+    min: 1e-5
+    max: 1e-2
+  batch_size:
+    distribution: categorical
+    values: [32, 64]
+  dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}

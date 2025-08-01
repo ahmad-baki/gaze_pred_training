@@ -15,69 +15,67 @@ from models.gaze_predictor import GazePredictor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# @hydra.main(config_path="conf", config_name="config")
+# def run_main(cfg: DictConfig):
+#     print("Running main with config:", cfg)
+#     # Sweep-Definition in ein plain Dict umwandeln
+#     sweep_cfg = OmegaConf.to_container(
+#         cfg.sweep,
+#         resolve=True,
+#         throw_on_missing=True
+#     )
+#     # Sweep anlegen
+#     sweep_id = wandb.sweep(
+#         sweep=sweep_cfg,
+#         project=cfg.wandb.project,
+#         entity=cfg.wandb.entity
+#     )
+#     print(f"Created sweep: {sweep_id}")
+
+#     # WandB-Agent startet und ruft für jeden Trial train(cfg) auf
+#     wandb.agent(sweep_id, function=lambda: train(cfg), count=1)
+
+
 @hydra.main(config_path="conf", config_name="config")
-def run_main(cfg: DictConfig):
-    print("Running main with config:", cfg)
-    cfg_hydra = cfg
-    # Sweep-Definition in ein plain Dict umwandeln
-    sweep_cfg = OmegaConf.to_container(
-        cfg_hydra.sweep,
-        resolve=True,
-        throw_on_missing=True
-    )
-    # Sweep anlegen
-    sweep_id = wandb.sweep(
-        sweep=sweep_cfg,
-        project=cfg_hydra.wandb.project,
-        entity=cfg_hydra.wandb.entity
-    )
-    print(f"Created sweep: {sweep_id}")
-
-    # WandB-Agent startet und ruft für jeden Trial train(cfg) auf
-    wandb.agent(sweep_id, function=lambda: train(cfg), count=1)
-
-
-def train(cfg = None):
+def train(cfg):
     # Neue W&B-Run initialisieren und den vollen Hydra-Cfg loggen
     run = wandb.init(
-        config=None
-        # project=cfg.wandb.project,
-        # entity=cfg.wandb.entity,
-        # config=OmegaConf.to_container(cfg, resolve=True) # type: ignore
+        # config=cfg,
+        project=cfg.wandb.project,
+        entity=cfg.wandb.entity,
+        config=OmegaConf.to_container(cfg, resolve=True) # type: ignore
     )
-    # Hier holen wir uns nur die hyperparametrischen Werte aus wandb.config
-    config = wandb.config
     print("-" * 20)
     print("Running train with config:", cfg)
-    train_loader, val_loader = get_data_loaders(cfg)
+    train_loader, val_loader = get_data_loaders(cfg, batch_size=cfg.batch_size)
     # Modell: feste Architektur-Teile aus cfg, Dropout aus Sweep
     model: GazePredictor = GazePredictor(
         hidden_dims=cfg.model.hidden_dims,
-        dropout=config.dropout,
-        repo=cfg.model.feature_extractor_repo,
-        dino_model_name=cfg.model.feature_extractor_name
+        dropout=cfg.dropout,
+        repo=cfg.model.feature_extractor.repo,
+        dino_model_name=cfg.model.feature_extractor.name
     ).to(device)
 
     optimizer: torch.optim.Optimizer
-    if config.optimizer == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
-    elif config.optimizer == "sgd":
-        optimizer = torch.optim.SGD(model.parameters(), lr=config.learning_rate)
+    if cfg.optimizer == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
+    elif cfg.optimizer == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=cfg.learning_rate)
     else:
-        raise ValueError(f"Unsupported optimizer: {config.optimizer}")
+        raise ValueError(f"Unsupported optimizer: {cfg.optimizer}")
 
     # Loss-Funktion anhand des gesampelten Sweep-Parameters
     criterion: Union[nn.MSELoss, nn.CrossEntropyLoss]
-    if config.loss == "mse":
+    if cfg.loss_function == "mse":
         criterion = nn.MSELoss()
-    elif config.loss == "ce":
+    elif cfg.loss_function == "ce":
         criterion = nn.CrossEntropyLoss()
     else:
-        raise ValueError(f"Unsupported loss function: {config.loss}")
+        raise ValueError(f"Unsupported loss function: {cfg.loss}")
 
     # Trainingsschleife mit gesampelten Epochs
-    print(f"Starting training for {config.epochs} epochs...")
-    for epoch in range(config.training.epochs):
+    print(f"Starting training for {cfg.epochs} epochs...")
+    for epoch in range(cfg.epochs):
         model.train()
         total_loss = 0.0
         for x, y in train_loader:
@@ -104,10 +102,10 @@ def train(cfg = None):
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss
         })
-    print(f"Finished training for {config.epochs} epochs.")
+    print(f"Finished training for {cfg.epochs} epochs.")
     run.finish()
 
-def get_data_loaders(config):
+def get_data_loaders(config, batch_size):
     dataset = PreprocessedGazeDataset(
         image_dir=config.dataset.image_dir,
         label_dir=config.dataset.label_dir
@@ -129,14 +127,14 @@ def get_data_loaders(config):
     # DataLoader für Training und Validierung
     train_loader = DataLoader(
         train_dataset,
-        batch_size=config.batch_size,
+        batch_size=batch_size,
         shuffle=True,
         num_workers=4,
         pin_memory=True
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=config.batch_size,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=4,
         pin_memory=True
@@ -146,4 +144,4 @@ def get_data_loaders(config):
 
 
 if __name__ == "__main__":
-    run_main()  # pylint: disable=no-value-for-parameter
+    train()  # pylint: disable=no-value-for-parameter

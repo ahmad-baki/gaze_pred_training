@@ -1,30 +1,13 @@
 defaults:
   - models@model: gaze_pre
   - dataset@dataset: gaze_dataset
-
 wandb:
   project: test        # replace with your project name
   entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
 
-sweep:
-  method: bayes             # Bayesian optimization
-  metric:
-    name: val_loss          # metric to optimize
-    goal: minimize          # minimize validation loss
-  parameters:
-    learning_rate:
-      distribution: uniform
-      min: 1e-5
-      max: 1e-2
-    batch_size:
-      distribution: categorical
-      values: [32]
-    dropout:
-      distribution: uniform
-      min: 0.0
-      max: 0.5
-
-training:
-  epochs: 10                # default number of epochs
-  loss_function: ce        # loss function to use: mse, ce
-  optimizer: adam          # optimizer to use: adam, sgd
+epochs: 10                # default number of epochs
+loss_function: ce        # loss function to use: mse, ce
+optimizer: adam          # optimizer to use: adam, sgd
+dropout: 1
+learning_rate: 0.001
+batch_size: 32

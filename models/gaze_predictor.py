@@ -94,10 +94,13 @@ class GazePredictor(nn.Module):
 
         # Determine feature dimension from backbone
         dummy = torch.randn(1, 3, 224, 224)
-        seq = self.backbone(dummy)[-1]  # (1, D, Hf, Wf), should be (1, 1+16 * 16, 768) 
-        _, token_count, dim = seq.shape
-        print(f"Feature shape from backbone: {seq.shape}, token_count={token_count}, dim={dim}")
+        
+        # forward_features returns a dict with keys, source:
+        # https://github.com/facebookresearch/dinov2/issues/2#issuecomment-1512181110
+        seq = self.backbone.forward_features(dummy)["x_norm_patchtokens"] # (1, D, Hf, Wf), should be (1, 1+16 * 16, 1024) 
 
+        print(f"Feature shape from backbone: {seq.shape}")
+        dim = seq.shape[-1]
         # 2) Create single MLP head
         self.mlp = MLP(in_dim=dim, hidden_dims=hidden_dims, dropout=dropout)
 
@@ -111,9 +114,7 @@ class GazePredictor(nn.Module):
             (B, 16 * 16) spatial softmax probabilities
         """
         # Extract last feature map: (B, D, Hf, Wf)
-        seq = self.backbone(x)
-        # Drop CLS token
-        feats = seq[:, 1:, :]       # (B, P, D)
+        feats = self.backbone.forward_features(x)["x_norm_patchtokens"] 
 
         # 2) Apply MLP in parallel across patches: (B, P)
         logits = self.mlp(feats)

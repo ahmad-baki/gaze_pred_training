@@ -1,5 +1,5 @@
 defaults:
-  - conf@hydra: config
+ - conf@hydra: config
 
 # Slurm config (optional)
 name: "SLURM"   # MUST BE "SLURM"
@@ -37,7 +37,6 @@ mem-per-cpu: 1000 # Optional - Cluster specific
 #   - "line 1"
 #   - "line 2"
 
----
 # # DEFAULT parameters (Optional)
 # name: "DEFAULT"   # MUST BE 'DEFAULT'
 
@@ -46,7 +45,6 @@ mem-per-cpu: 1000 # Optional - Cluster specific
 # params:
 #   param_1: "default_value"
 
----
 # Experiment 1
 name: "experiment_name"
 

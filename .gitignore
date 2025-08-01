@@ -18,5 +18,9 @@ test/
 # Ignore vstudio code settings
 .vscode/
 
+output/
+outputs/
+wandb/
+
 /*.pyc
 __pycache__/
