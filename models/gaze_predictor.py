@@ -84,7 +84,7 @@ class GazePredictor(nn.Module):
     def __init__(
         self,
         # backbone_name: str = 'dino_vitb14',
-        hidden_dims: list, dropout: float, repo: str, dino_model_name: str
+        feature_dims: int, hidden_dims: list, dropout: float, repo: str, dino_model_name: str
     ):
         super().__init__()
         # 1) Load and freeze the DINOv2 backbone
@@ -93,16 +93,16 @@ class GazePredictor(nn.Module):
             param.requires_grad = False
 
         # Determine feature dimension from backbone
-        dummy = torch.randn(1, 3, 224, 224)
+        # dummy = torch.randn(1, 3, 224, 224)
         
         # forward_features returns a dict with keys, source:
         # https://github.com/facebookresearch/dinov2/issues/2#issuecomment-1512181110
-        seq = self.backbone.forward_features(dummy)["x_norm_patchtokens"] # (1, D, Hf, Wf), should be (1, 1+16 * 16, 1024) 
+        # seq = self.backbone.forward_features(dummy)["x_norm_patchtokens"] # (1, D, Hf, Wf), should be (1, 1+16 * 16, 1024) 
 
-        print(f"Feature shape from backbone: {seq.shape}")
-        dim = seq.shape[-1]
+        # print(f"Feature shape from backbone: {seq.shape}")
+        # dim = seq.shape[-1]
         # 2) Create single MLP head
-        self.mlp = MLP(in_dim=dim, hidden_dims=hidden_dims, dropout=dropout)
+        self.mlp = MLP(in_dim=feature_dims, hidden_dims=hidden_dims, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -118,7 +118,9 @@ class GazePredictor(nn.Module):
 
         # 2) Apply MLP in parallel across patches: (B, P)
         logits = self.mlp(feats)
+        print(f"Logits shape after MLP: {logits.shape}")
 
         # Spatial softmax over patches
-        probs = torch.softmax(logits, dim=-1)
+        probs = torch.softmax(logits, dim=1)
+        print(f"probs_example: {probs[0].sum()}")  # Print first 10 probabilities for debugging
         return probs

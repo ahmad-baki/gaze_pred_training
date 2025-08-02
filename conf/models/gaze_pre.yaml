@@ -1,9 +1,7 @@
-_target_: gaze_model.GazePredictor
-feature_extractor:
-  repo: 'facebookresearch/dinov2'
-  name: 'dinov2_vitl14_reg'  # DINOv2 model name
-  feature_dim: 768  # Dimension of the features extracted by DINOv2
+defaults:
+  - feature_extractor@feature_extractor: dinov2_vitl14_reg
 
+_target_: gaze_model.GazePredictor
 hidden_dims: [512, 256, 128]  # Hidden dimensions for the MLP
 output_dim: 1  # Output dimension for gaze prediction
 hidden_activation: 'relu'  # Activation function for the MLP

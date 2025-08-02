@@ -51,6 +51,7 @@ def train(cfg):
     print("Data loaders created.")
     # Modell: feste Architektur-Teile aus cfg, Dropout aus Sweep
     model: GazePredictor = GazePredictor(
+        feature_dims=cfg.model.feature_extractor.feature_dims,
         hidden_dims=cfg.model.hidden_dims,
         dropout=cfg.dropout,
         repo=cfg.model.feature_extractor.repo,
