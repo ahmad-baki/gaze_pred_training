@@ -21,6 +21,9 @@ test/
 output/
 outputs/
 wandb/
+logs/
+log/
+path/
 
 /*.pyc
 __pycache__/

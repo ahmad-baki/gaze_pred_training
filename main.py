@@ -104,6 +104,7 @@ def train(cfg):
                 for x, y in val_loader:
                     # print shapes
                     x = x.to(device)
+                    y = y.to(device)
                     total_val_loss += criterion(model(x), y).item()
             avg_val_loss = total_val_loss / len(val_loader)
             print(f"Epoch {epoch + 1}/{cfg.epochs}, Val Loss: {avg_val_loss:.4f}")

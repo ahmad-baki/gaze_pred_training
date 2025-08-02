@@ -1,3 +1,6 @@
+project: test        # replace with your project name
+entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
+
 program: main.py
 method: bayes             # Bayesian optimization
 metric:
