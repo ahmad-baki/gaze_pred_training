@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split, DataLoader
+from alive_progress import alive_bar
 
 from helper.dataset import PreprocessedGazeDataset
 from models.gaze_predictor import GazePredictor
@@ -39,15 +40,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 @hydra.main(config_path="conf", config_name="config")
 def train(cfg):
     # Neue W&B-Run initialisieren und den vollen Hydra-Cfg loggen
+    print("Running training")
     run = wandb.init(
         # config=cfg,
         project=cfg.wandb.project,
         entity=cfg.wandb.entity,
         config=OmegaConf.to_container(cfg, resolve=True) # type: ignore
     )
-    print("-" * 20)
-    print("Running train with config:", cfg)
     train_loader, val_loader = get_data_loaders(cfg, batch_size=cfg.batch_size)
+    print("Data loaders created.")
     # Modell: feste Architektur-Teile aus cfg, Dropout aus Sweep
     model: GazePredictor = GazePredictor(
         hidden_dims=cfg.model.hidden_dims,
@@ -55,6 +56,7 @@ def train(cfg):
         repo=cfg.model.feature_extractor.repo,
         dino_model_name=cfg.model.feature_extractor.name
     ).to(device)
+    print("Model created.")
 
     optimizer: torch.optim.Optimizer
     if cfg.optimizer == "adam":
@@ -72,36 +74,46 @@ def train(cfg):
         criterion = nn.CrossEntropyLoss()
     else:
         raise ValueError(f"Unsupported loss function: {cfg.loss}")
-
+    print("Optimizer and loss function set.")
     # Trainingsschleife mit gesampelten Epochs
     print(f"Starting training for {cfg.epochs} epochs...")
-    for epoch in range(cfg.epochs):
-        model.train()
-        total_loss = 0.0
-        for x, y in train_loader:
-            x = x.to(device)
-            y = y.to(device)
-            optimizer.zero_grad()
-            outputs = model(x)
-            loss = criterion(outputs, y)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-        avg_train_loss = total_loss / len(train_loader)
+    with alive_bar(cfg.epochs, title="Training progress") as bar:
+         # Training und Validierung
+        for epoch in range(cfg.epochs):
+            bar.text = f"Epoch {epoch + 1}/{cfg.epochs}"
+            bar()
 
-        model.eval()
-        total_val_loss = 0.0
-        with torch.no_grad():
-            for x, y in val_loader:
-                total_val_loss += criterion(model(x), y).item()
-        avg_val_loss = total_val_loss / len(val_loader)
+            # WandB-Log für die aktuelle Epoche
+            model.train()
+            total_loss = 0.0
+            for x, y in train_loader:
+                x = x.to(device)
+                y = y.to(device)
+                optimizer.zero_grad()
+                outputs = model(x)
+                # print shapes
+                loss = criterion(outputs, y)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+            avg_train_loss = total_loss / len(train_loader)
+            print(f"Epoch {epoch + 1}/{cfg.epochs}, Train Loss: {avg_train_loss:.4f}")
+            model.eval()
+            total_val_loss = 0.0
+            with torch.no_grad():
+                for x, y in val_loader:
+                    # print shapes
+                    x = x.to(device)
+                    total_val_loss += criterion(model(x), y).item()
+            avg_val_loss = total_val_loss / len(val_loader)
+            print(f"Epoch {epoch + 1}/{cfg.epochs}, Val Loss: {avg_val_loss:.4f}")
 
-        # Metriken loggen
-        wandb.log({
-            "epoch": epoch,
-            "train_loss": avg_train_loss,
-            "val_loss": avg_val_loss
-        })
+            # Metriken loggen
+            wandb.log({
+                "epoch": epoch,
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss
+            })
     print(f"Finished training for {cfg.epochs} epochs.")
     run.finish()
 

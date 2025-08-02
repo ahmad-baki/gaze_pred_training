@@ -6,8 +6,8 @@ metric:
 parameters:
   learning_rate:
     distribution: uniform
-    min: 1e-5
-    max: 1e-2
+    min: 0.0001
+    max: 0.1
   batch_size:
     distribution: categorical
     values: [32, 64]

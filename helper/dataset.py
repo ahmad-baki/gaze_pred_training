@@ -50,6 +50,8 @@ class PreprocessedGazeDataset(Dataset):
         # load precomputed gaze map
         gaze_map = self.gaze_array[idx]    # (H, W)
         gaze_tensor = torch.from_numpy(gaze_map).float()  # (H, W)
+        # reshape to (H*W,) (flatten) if needed
+        gaze_tensor = gaze_tensor.view(-1)
         # if you need a channel dim: uncomment
         # gaze_tensor = gaze_tensor.unsqueeze(0)  # (1, H, W)
 
@@ -57,10 +59,11 @@ class PreprocessedGazeDataset(Dataset):
 
 
 # ——— USAGE EXAMPLE ———
+IMG_DIR     = "/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed"
+LABEL_DIR   = "/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed"
+
 
 if __name__ == '__main__':
-    IMG_DIR   = '/kaggle/working/resized_images'
-    LABEL_DIR = '/kaggle/working/labels'      # contains gaze_vectors.npy
 
     # define any extra transforms here
     transform = T.Compose([
@@ -83,6 +86,6 @@ if __name__ == '__main__':
 
     # quick check
     for imgs, gazes in dataloader:
-        print("Images:", imgs.shape)  # (B, 3, H, W)
-        print("Gazes:", gazes.shape) # (B, H, W) or (B,1,H,W) if you unsqueeze
+        print("Images:", imgs.shape)  # (B, 3, H_img, W_img) = (B, 3, 224, 224) 
+        print("Gazes:", gazes.shape) # (B, H_gaze * W_gaze)  = (B, 16 * 16)
         break
