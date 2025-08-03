@@ -91,7 +91,8 @@ class GazePredictor(nn.Module):
         self.backbone: nn.Module = torch.hub.load(repo, dino_model_name) # type: ignore
         for param in self.backbone.parameters():
             param.requires_grad = False
-
+        self.backbone.eval()  # Set to eval mode
+        
         # Determine feature dimension from backbone
         # dummy = torch.randn(1, 3, 224, 224)
         
@@ -114,7 +115,9 @@ class GazePredictor(nn.Module):
             (B, 16 * 16) spatial softmax probabilities
         """
         # Extract last feature map: (B, D, Hf, Wf)
-        feats = self.backbone.forward_features(x)["x_norm_patchtokens"] 
+        with torch.no_grad():
+            # Forward through the backbone to get patch tokens
+            feats = self.backbone.forward_features(x)["x_norm_patchtokens"]
 
         # 2) Apply MLP in parallel across patches: (B, P)
         logits = self.mlp(feats)
