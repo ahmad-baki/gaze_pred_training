@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 
+from alive_progress import alive_bar
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -32,10 +33,15 @@ def resize_images_in_directory(src_dir: Path, tar_dir: Path, tar_width: int, tar
             continue
 
         img_path = src_dir / filename
-        img = Image.open(img_path).convert('RGB')
-        resized_img = resize_image(img, tar_width, tar_height)
-        # save via matplotlib to preserve original format & range
-        plt.imsave(tar_dir / filename, np.array(resized_img))
+        try:
+            img = Image.open(img_path).convert('RGB')
+            resized_img = resize_image(img, tar_width, tar_height)
+            # save via matplotlib to preserve original format & range
+            plt.imsave(tar_dir / filename, np.array(resized_img))
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+            return False
+    return True
 
 def onehot_vector_gaze_dataset(
     src_dir: Path,
@@ -47,6 +53,7 @@ def onehot_vector_gaze_dataset(
     """
     Input: src_dir with JSON files, each:
       { "x": float, "y": float }
+      Assumes x, y are in [0, 1] range and that origin is top-left. If origin is bottom-left, set flip_vert=False.
     Output: tar_dir/gaze_vectors.npy containing an array of 2D one-hot gaze maps.
     """
     tar_dir.mkdir(parents=True, exist_ok=True)
@@ -55,16 +62,24 @@ def onehot_vector_gaze_dataset(
     # Check if the gaze vector file already exists
     if os.path.exists(tar_dir / 'gaze_vectors.npy'):
         print(f"Skipping {tar_dir / 'gaze_vectors.npy'}, already processed.")
-        return
+        return None
     
     for filename in os.listdir(src_dir):
         if not filename.lower().endswith('.json'):
             continue
         
-        
-        with open(src_dir / filename, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        try:
+            # Load JSON data
+            with open(src_dir / filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON in {src_dir / filename}: {e}")
+            return False
 
+        if 'x' not in data or 'y' not in data:
+            print(f"Invalid data in {src_dir / filename}, missing 'x' or 'y': {data}")
+            return False
+        
         # create blank map
         gaze_map = np.zeros((tar_height, tar_width), dtype=np.uint8)
 
@@ -80,10 +95,12 @@ def onehot_vector_gaze_dataset(
         gaze_map[y_px, x_px] = 1
         gaze_data.append(gaze_map)
 
+    if len(gaze_data) == 0:
+        print(f"No valid gaze data found in {src_dir}. Skipping...")
+        return False
     gaze_array = np.stack(gaze_data, axis=0)
     np.save(tar_dir / 'gaze_vectors.npy', gaze_array)
-
-
+    return True
 
 TARGET_IMG_HEIGHT = 224
 TARGET_IMG_WIDTH = 224
@@ -94,42 +111,73 @@ TARGET_GAZE_WIDTH = 16
 # SOURCE_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/raw')
 # TARGET_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed')
 
-SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/raw/2d')
+SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/data/3d')
 SUB_DIR = Path('sensors/continuous_device_')
-TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/processed/2d')
+TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/processed/3d')
 
 if __name__ == "__main__":
     print("Starting preprocessing...")
     # for each folder in SOURCE_DIR, resize images and create one-hot encoded gaze vectors
-    for task in SOURCE_PAR_DIR.iterdir():
-        if task.is_dir():
-            # iterate over trajectories
-            for trajectory in task.iterdir():
-                if trajectory.is_dir():
-                    print(f"Processing {task.name}/{trajectory.name}...")
-                    # Resize images
-                    src_dir = SOURCE_PAR_DIR / task.name / trajectory.name / SUB_DIR
-                    target_dir = TARGET_DIR / task.name / trajectory.name / SUB_DIR
-                    if not src_dir.exists():
-                        print(f"Source directory {src_dir} does not exist, skipping...")
-                        continue
-                    if not target_dir.exists():
-                        target_dir.mkdir(parents=True, exist_ok=True)
 
-                    resize_images_in_directory(
-                        src_dir=src_dir,
-                        tar_dir=target_dir,
-                        tar_width=TARGET_IMG_WIDTH,
-                        tar_height=TARGET_IMG_HEIGHT
-                    )
-                    print(f"Resized images in {trajectory.name}.")
-                    # Create one-hot encoded gaze vectors
-                    onehot_vector_gaze_dataset(
-                        src_dir=src_dir,
-                        tar_dir=target_dir,
-                        tar_width=TARGET_GAZE_WIDTH,
-                        tar_height=TARGET_GAZE_HEIGHT,
-                        flip_vert=True  # Set to False if you don't want to flip the y-coordinate
-                    )
-                    print(f"Created gaze vectors for {trajectory.name}.") 
+    faulty_trajectories = []
+    for task in SOURCE_PAR_DIR.iterdir():
+
+        if not task.is_dir():
+            print(f"Skipping {SOURCE_PAR_DIR / task.name}, not a directory.")
+            continue
+
+        # iterate over trajectories
+        for trajectory in task.iterdir():
+            if not trajectory.is_dir():
+                print(f"Skipping {task / trajectory.name}, not a directory.")
+                continue
+
+            print(f"Processing {task / trajectory.name} ...")
+            # Resize images
+            src_dir = SOURCE_PAR_DIR / task.name / trajectory.name / SUB_DIR
+            target_dir = TARGET_DIR / task.name / trajectory.name / SUB_DIR
+            if not src_dir.exists():
+                print(f"Source directory {src_dir} does not exist, skipping...")
+                faulty_trajectories.append(src_dir)
+                continue
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+
+            # Create one-hot encoded gaze vectors
+            success = onehot_vector_gaze_dataset(
+                src_dir=src_dir,
+                tar_dir=target_dir,
+                tar_width=TARGET_GAZE_WIDTH,
+                tar_height=TARGET_GAZE_HEIGHT,
+                flip_vert=True  # Set to False if you don't want to flip the y-coordinate
+            )
+            
+            if success is None:
+                print(f"Skipping {trajectory.name}, gaze vectors already exist.")
+                continue
+
+            if not success:
+                faulty_trajectories.append(src_dir)
+                continue
+            print(f"Created gaze vectors for {trajectory.name}.") 
+
+
+            # Resize images
+            success = resize_images_in_directory(
+                src_dir=src_dir,
+                tar_dir=target_dir,
+                tar_width=TARGET_IMG_WIDTH,
+                tar_height=TARGET_IMG_HEIGHT
+            )
+            if not success:
+                faulty_trajectories.append(src_dir)
+                continue
+            print(f"Resized images in {task / trajectory.name}.")
+    if faulty_trajectories:
+        print("Some trajectories failed to process:")
+        for traj in faulty_trajectories:
+            print(f"- {traj}")
+    else:
+        print("All trajectories processed successfully.")
     print("Preprocessing completed.")

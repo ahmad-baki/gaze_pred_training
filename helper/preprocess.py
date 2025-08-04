@@ -42,7 +42,7 @@ def onehot_vector_gaze_dataset(
     """
     Input: src_dir with JSON files, each:
       { "x": float, "y": float }
-    Output: tar_dir/gaze_vectors.npy containing an array of 2D one-hot gaze maps.
+    Output: tar_dir/gaze_vectors.npy containing an array of 2D one-hot gaze maps. (N, H, W)
     """
     tar_dir.mkdir(parents=True, exist_ok=True)
     gaze_data = []
