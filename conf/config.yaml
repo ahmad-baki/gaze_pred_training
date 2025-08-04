@@ -1,6 +1,6 @@
 defaults:
   - models@model: gaze_pre
-  - dataset@dataset: gaze_dataset
+  - dataset@dataset: gaze_dataset_workspace
 wandb:
   project: test        # replace with your project name
   entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)

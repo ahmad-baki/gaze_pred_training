@@ -12,4 +12,4 @@
 module load devel/miniforge
 conda activate gaze_pred_train
 cd /home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/
-wandb agent ahmad-baki-karlsruhe-institute-of-technology/test/ksi61v57
+wandb agent ahmad-baki-karlsruhe-institute-of-technology/test/kv5dvxgg

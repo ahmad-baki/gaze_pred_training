@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import random_split, DataLoader
 from alive_progress import alive_bar
 
-from helper.dataset import PreprocessedGazeDataset
+from helper.dataset import PreprocessedGazeDatasetWorkspace
 from models.gaze_predictor import GazePredictor
 
 
@@ -212,9 +212,15 @@ def train(cfg: DictConfig):
 
 
 def get_data_loaders(config, batch_size):
-    dataset = PreprocessedGazeDataset(
-        image_dir=config.dataset.image_dir,
-        label_dir=config.dataset.label_dir
+    # dataset = PreprocessedGazeDatasetWorkspace(
+    #     image_dir=config.dataset.image_dir,
+    #     label_dir=config.dataset.label_dir
+    #     # transform=config.dataset.transform
+    # )
+
+    dataset = PreprocessedGazeDatasetWorkspace(
+        image_dir=config.dataset.dir,
+        task=config.dataset.task,
         # transform=config.dataset.transform
     )
 
