@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: gaze_pred_training
+Version: 0.1.0
+Summary: Gaze Prediction Training
+Author: Ahmad Baki
+Author-email: bakiahmad26@gmail.com
+Requires-Python: >=3
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-python
+Dynamic: summary
+
+# gaze_pred

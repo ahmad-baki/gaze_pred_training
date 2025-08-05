@@ -1,8 +1,0 @@
-defaults:
-  - feature_extractor@feature_extractor: dinov2_vitl14_reg
-
-_target_: gaze_model.GazePredictor
-hidden_dims: [512, 256, 128]  # Hidden dimensions for the MLP
-output_dim: 1  # Output dimension for gaze prediction
-hidden_activation: 'relu'  # Activation function for the MLP
-output_activation: 'sigmoid'  # Activation for the final output layer

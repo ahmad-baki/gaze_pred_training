@@ -1,0 +1,23 @@
+defaults:
+  - models@model: gaze_pre
+  - dataset@dataset: gaze_dataset_workspace
+wandb:
+  project: test        # replace with your project name
+  entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
+
+
+model_save_interval: 10 # save model every n epochs
+
+epochs: 300                
+dropout: 0.1
+learning_rate: 1e-05        
+batch_size: 16
+weight_decay: !!float 1e-04 
+
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 1e-5
+  weight_decay: 0
+
+loss:
+  _target_: torch.nn.CrossEntropyLoss

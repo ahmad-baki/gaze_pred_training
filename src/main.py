@@ -1,4 +1,5 @@
 import csv
+import math
 import os
 from time import time
 import hydra
@@ -10,8 +11,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data import random_split, DataLoader
 from alive_progress import alive_bar
 
-from helper.dataset import PreprocessedGazeDatasetWorkspace
-from models.gaze_predictor import GazePredictor
+from helper.preprocessed_gaze_dataset_workspace import PreprocessedGazeDatasetWorkspace
+from models.gaze_predictor import GazePredictorModel
 
 
 # from data import MyDataset  # Dein Dataset-Import
@@ -50,35 +51,21 @@ def train(cfg: DictConfig):
         entity=cfg.wandb.entity,
         config=OmegaConf.to_container(cfg, resolve=True)
     )
-    csv_dir_path = f"/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/time_logs/{run.id}"
-    os.makedirs(csv_dir_path, exist_ok=True)
-    print(f"Created directory for time logs: {csv_dir_path}")
+    save_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Created directory for time logs: {save_dir}")
 
 
     train_loader, val_loader = get_data_loaders(cfg, batch_size=cfg.batch_size)
 
-    model = GazePredictor(
-        feature_dims=cfg.model.feature_extractor.feature_dims,
-        hidden_dims=cfg.model.hidden_dims,
-        dropout=cfg.dropout,
-        repo=cfg.model.feature_extractor.repo,
-        dino_model_name=cfg.model.feature_extractor.name
-    ).to(device)
-
-    optimizer = {
-        "adam": torch.optim.Adam,
-        "sgd":  torch.optim.SGD
-    }[cfg.optimizer](model.parameters(), lr=cfg.learning_rate)
-
-    criterion = {
-        "mse": nn.MSELoss(),
-        "ce":  nn.CrossEntropyLoss()
-    }[cfg.loss_function]
+    model = hydra.utils.instantiate(cfg.model, dropout=cfg.dropout).to(device)
+    optimizer = hydra.utils.instantiate(cfg.optimizer, params=model.parameters())
+    criterion = hydra.utils.instantiate(cfg.loss)
 
     setup_time = time() - setup_start
 
     # ──────── TRAINING ───────────────────────
-    csv_path = os.path.join(csv_dir_path, 'timings.csv')
+    csv_path = os.path.join(save_dir, 'timings.csv')
     file_exists = os.path.isfile(csv_path)
     csv_file = open(csv_path, 'a', newline='')
     csv_writer = csv.writer(csv_file)
@@ -90,6 +77,8 @@ def train(cfg: DictConfig):
     sum_data_loading = sum_model_running = sum_update = 0.0
     training_start = time()
 
+    best_val_loss = math.inf
+    best_model_save_path = ""
     with alive_bar(cfg.epochs, title="Training") as bar:
         for epoch in range(cfg.epochs):
             bar.text = f"Epoch {epoch+1}/{cfg.epochs}"
@@ -99,8 +88,17 @@ def train(cfg: DictConfig):
             epoch_start = time()
             epoch_dl = epoch_mr = epoch_us = 0.0
 
+            # -- Track Training Accuracy --
+            train_correct = 0
+            train_total = 0
+
+            # -- Tracking Training Loss --
+            sum_train_loss = 0.0
+            train_batches = 0
             model.train()
             for x, y in train_loader:
+                train_batches += 1
+
                 # Data loading timer
                 dl_start = time()
                 x = x.to(device, non_blocking=True)
@@ -112,10 +110,17 @@ def train(cfg: DictConfig):
                 # Model forward + loss timer
                 mr_start = time()
                 outputs = model(x)
-                loss = criterion(outputs, y)
+                target_idx = y.view(y.size(0), -1).argmax(dim=1)
+                loss = criterion(outputs, target_idx)
                 mr_end = time()
                 epoch_mr += (mr_end - mr_start)
                 sum_model_running += (mr_end - mr_start)
+
+                # Track accuracy
+                pred_idx = outputs.argmax(dim=1)
+                train_correct += (pred_idx == target_idx).sum().item()
+                train_total += y.size(0)
+                sum_train_loss += loss.item()
 
                 # Backward + update timer
                 us_start = time()
@@ -127,11 +132,19 @@ def train(cfg: DictConfig):
                 epoch_us += (us_end - us_start)
                 sum_update += (us_end - us_start)
 
+            # -- Track Validation Accuracy --
+            val_correct = 0
+            val_total = 0
+
+            # -- Track Validation Loss --
+            sum_validation_loss = 0.0
+            val_batches = 0
             model.eval()
             with torch.no_grad():
                 for x, y in val_loader:
                     # Data loading timer
                     dl_start = time()
+                    val_batches += 1
                     x = x.to(device, non_blocking=True)
                     y = y.to(device, non_blocking=True)
                     dl_end = time()
@@ -145,17 +158,39 @@ def train(cfg: DictConfig):
                     epoch_mr += (mr_end - mr_start)
                     sum_model_running += (mr_end - mr_start)
 
+                    # Track accuracy
+                    pred_idx = outputs.view(outputs.size(0), -1).argmax(dim=1)
+                    target_idx = y.view(y.size(0), -1).argmax(dim=1)
+                    val_correct += (pred_idx == target_idx).sum().item()
+                    val_total += y.size(0)
+
+                    sum_validation_loss += loss.item()
 
             epoch_time = time() - epoch_start
 
+            # -- Log epoch results --
+            avg_train_acc = train_correct / train_total if train_total > 0 else 0
+            avg_val_acc = val_correct / val_total if val_total > 0 else 0
+
+            avg_train_loss = sum_train_loss / train_batches
+            avg_val_loss = sum_validation_loss / val_batches
+
+            if epoch % cfg.model_save_interval == 0 and best_val_loss > avg_val_loss:
+                model_save_path = os.path.join(save_dir, f'model_epoch_{epoch+1}.pth')
+                model.save(model_save_path)
+                best_val_loss = avg_val_loss
+                os.remove(best_model_save_path) if best_model_save_path else ""
+                best_model_save_path = model_save_path
+                print(f"Saved model checkpoint to {model_save_path}")
+
             # Log to CSV
-            csv_writer.writerow([
-                epoch + 1,
-                f"{epoch_time:.4f}",
-                f"{epoch_dl:.4f}",
-                f"{epoch_mr:.4f}",
-                f"{epoch_us:.4f}",
-            ])
+            # csv_writer.writerow([
+            #     epoch + 1,
+            #     f"{epoch_time:.4f}",
+            #     f"{epoch_dl:.4f}",
+            #     f"{epoch_mr:.4f}",
+            #     f"{epoch_us:.4f}",
+            # ])
 
             # Log to W&B
             wandb.log({
@@ -164,10 +199,17 @@ def train(cfg: DictConfig):
                 "data_loading_time": epoch_dl,
                 "model_running_time": epoch_mr,
                 "update_step_time": epoch_us,
+                "avg_train_loss": avg_train_loss,
+                "avg_val_loss": avg_val_loss,
+                "avg_train_acc": avg_train_acc,
+                "avg_val_acc": avg_val_acc,
             })
             print(f"Epoch {epoch+1} time: {epoch_time:.2f}s "
                   f"(dl: {epoch_dl:.2f}s, mr: {epoch_mr:.2f}s, us: {epoch_us:.2f}s)")
+            print(f"Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+            print(f"Avg Train Acc: {avg_train_acc:.4f}, Avg Val Acc: {avg_val_acc:.4f}")
 
+    torch.save(model.state_dict(), save_dir + '/model.pth')
     print("Training complete.")
     # ──────── FINALIZE ──────────────────────
     training_time = time() - training_start
@@ -183,30 +225,30 @@ def train(cfg: DictConfig):
         "update_step_time":   f"{100 * sum_update / total_time:.4f}%",
         "total_time":         f"{total_time:.4f}s"
     }
-    totals_csv = os.path.join(csv_dir_path, 'totals.csv')
+    totals_csv = os.path.join(save_dir, 'totals.csv')
     file_exists = os.path.isfile(totals_csv)
 
     # Open in append mode, write header if new, then write totals
-    with open(totals_csv, 'a', newline='') as f_tot:
-        print(f"Writing totals to {totals_csv}")
-        writer = csv.writer(f_tot)
-        if not file_exists:
-            writer.writerow([
-                'setup_time',
-                'training_time',
-                'data_loading_time',
-                'model_running_time',
-                'update_step_time',
-                'total_time'
-            ])
-        writer.writerow([
-            totals['setup_time'],
-            totals['training_time'],
-            totals['data_loading_time'],
-            totals['model_running_time'],
-            totals['update_step_time'],
-            totals['total_time'],
-        ])
+    # with open(totals_csv, 'a', newline='') as f_tot:
+    #     print(f"Writing totals to {totals_csv}")
+    #     writer = csv.writer(f_tot)
+    #     if not file_exists:
+    #         writer.writerow([
+    #             'setup_time',
+    #             'training_time',
+    #             'data_loading_time',
+    #             'model_running_time',
+    #             'update_step_time',
+    #             'total_time'
+    #         ])
+    #     writer.writerow([
+    #         totals['setup_time'],
+    #         totals['training_time'],
+    #         totals['data_loading_time'],
+    #         totals['model_running_time'],
+    #         totals['update_step_time'],
+    #         totals['total_time'],
+    #     ])
 
     run.finish()
 
@@ -219,7 +261,7 @@ def get_data_loaders(config, batch_size):
     # )
 
     dataset = PreprocessedGazeDatasetWorkspace(
-        image_dir=config.dataset.dir,
+        dir=config.dataset.dir,
         task=config.dataset.task,
         # transform=config.dataset.transform
     )

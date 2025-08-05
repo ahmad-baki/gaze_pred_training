@@ -16,27 +16,28 @@ class PreprocessedGazeDatasetWorkspace(Dataset):
       - pre-computed gaze maps from `label_dir/gaze_vectors.npy`
     and returns (image_tensor, gaze_map_tensor).
     """
+    SUB_PATH = "sensors/continuous_device_"
     def __init__(self,
                  dir: Path,
                  transform=None,
-                 task_given: str | None = None
+                 task: str | None = None
                  ):
         self.dir = Path(dir)
 
         self.image_files = []
         self.gaze_array = np.empty((0, 16, 16), dtype=np.float32)  # shape: (N, H, W)
 
-        if task_given is not None:
+        if task is not None:
             # if a specific task is given, only load that one
-            task_dir = self.dir / task_given
+            task_dir = self.dir / task
             if not task_dir.exists():
                 raise ValueError(f"Task directory {task_dir} does not exist.")
             self.get_data(task_dir)
         else:
-            for task in self.dir.iterdir():
-                if not task.is_dir():
+            for task_iter in self.dir.iterdir():
+                if not task_iter.is_dir():
                     continue
-                self.get_data(task)
+                self.get_data(task_iter)
         
 
         # optional image transform (e.g. ToTensor, Normalize)
@@ -47,14 +48,15 @@ class PreprocessedGazeDatasetWorkspace(Dataset):
         for trajectory in task_dir.iterdir():
             if not trajectory.is_dir():
                 continue
-
+            
+            path = trajectory / self.SUB_PATH
             self.image_files += sorted([
-                    trajectory / fn for fn in os.listdir(trajectory)
+                    path / fn for fn in os.listdir(path)
                     if fn.lower().endswith(('.png', '.jpg', '.jpeg'))
                     ])
 
                 # load all gaze maps at once
-            gaze_path = trajectory / 'gaze_vectors.npy'
+            gaze_path = path / 'gaze_vectors.npy'
             assert gaze_path.exists(), \
                     f"Gaze vectors file not found: {gaze_path}"
             self.gaze_array = np.append(self.gaze_array, np.load(gaze_path), axis=0)  # shape: (N, H, W)

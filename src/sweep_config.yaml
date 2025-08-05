@@ -1,23 +1,29 @@
-project: test        # replace with your project name
+project: test #gaze_pred_training        # replace with your project name
 entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
 
 program: main.py
 method: bayes             # Bayesian optimization
 metric:
-  name: val_loss          # metric to optimize
+  name: avg_val_loss          # metric to optimize
   goal: minimize          # minimize validation loss
 parameters:
-  learning_rate:
+  optimization.lr:
     distribution: uniform
     min: 0.0001
     max: 0.1
-  # batch_size:
-  #   distribution: categorical
-  #   values: [128, 256, 512, 1024]
+  batch_size:
+    distribution: categorical
+    values: [256, 512, 1024]
+
   dropout:
     distribution: uniform
     min: 0.0
     max: 0.5
+
+  weight_decay:
+    distribution: log_uniform
+    min: !!float 1e-6
+    max: !!float 1e-2
 
 command:
   - ${env}
