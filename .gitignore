@@ -17,7 +17,7 @@ models/
 test/
 # Ignore vstudio code settings
 .vscode/
-
+graphics/
 output/
 outputs/
 wandb/
@@ -25,6 +25,8 @@ logs/
 log/
 path/
 time_logs/
+# ignore all folders that start with "gifs"
+gifs*/
 
 /*.pyc
 __pycache__/

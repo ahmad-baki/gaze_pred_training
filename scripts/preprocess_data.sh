@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=test_script
-#SBATCH --output=logs/test_script_%j.out
-#SBATCH --error=logs/test_script_%j.err
+#SBATCH --job-name=preprocess_data
+#SBATCH --output=logs/preprocess_data/preprocess_data_%j.out
+#SBATCH --error=logs/preprocess_data/preprocess_data_%j.err
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=30:00

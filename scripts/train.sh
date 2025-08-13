@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=test_script
-#SBATCH --output=logs/test_script_%j.out
-#SBATCH --error=logs/test_script_%j.err
+#SBATCH --job-name=train_gaze
+#SBATCH --output=logs/train/train_gaze_%j.out
+#SBATCH --error=logs/train/train_gaze_%j.err
 #SBATCH --time=06:00:00
 #SBATCH --partition=gpu_a100_il
 #SBATCH --nodes=1

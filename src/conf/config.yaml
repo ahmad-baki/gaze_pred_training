@@ -1,23 +1,62 @@
+# conf/config.yaml
+
 defaults:
   - models@model: gaze_pre
   - dataset@dataset: gaze_dataset_workspace
+
 wandb:
   project: test        # replace with your project name
-  entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
+  entity: ahmad-baki-karlsruhe-institute-of-technology  # replace with your WandB entity
 
-
-model_save_interval: 10 # save model every n epochs
-
-epochs: 300                
+# ────────────────────────────────────────────────────────
+# General training settings
+model_save_interval: 10      # save model checkpoint every n epochs
+epochs: 300
+top_k: 3
 dropout: 0.1
-learning_rate: 1e-05        
 batch_size: 16
-weight_decay: !!float 1e-04 
+# note: code now uses cfg.lr, not `learning_rate`
+lr: 1e-5
+weight_decay: 1e-4
 
+# ────────────────────────────────────────────────────────
+# Optimizer
 optimizer:
-  _target_: torch.optim.Adam
-  lr: 1e-5
-  weight_decay: 0
+  # one of: adam, adamw, sgd, ranger
+  type: ranger
+  # these will only be used by Adam/AdamW
+  betas0: 0.9
+  betas1: 0.999
 
+  # for SGD
+  momentum: 0.9
+  
+# ────────────────────────────────────────────────────────
+# Learning‐rate Scheduler
+scheduler:
+  # one of: steplr, cosine, onecycle, reduceonplateau
+  type: steplr
+  
+  # for StepLR
+  step_size: 10
+  gamma: 0.5
+  
+  # only for ReduceLROnPlateau
+  patience: 5
+  
+  # only for OneCycleLR
+  max_lr: 1e-3
+
+# ────────────────────────────────────────────────────────
+# Loss & regularization
+# label smoothing is applied in CrossEntropyLoss
+label_smoothing: 0.0
+
+# ────────────────────────────────────────────────────────
+# Gradient clipping
+gradient_clip_max_norm: 1.0
+
+# ────────────────────────────────────────────────────────
+# Loss instantiation
 loss:
   _target_: torch.nn.CrossEntropyLoss

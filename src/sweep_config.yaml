@@ -1,29 +1,83 @@
-project: test #gaze_pred_training        # replace with your project name
-entity: ahmad-baki-karlsruhe-institute-of-technology # replace with your WandB entity (team/user)
-
+# ───────────────────────────────────────────────────────────────────────────────
 program: main.py
-method: bayes             # Bayesian optimization
+method: bayes   
 metric:
-  name: avg_val_loss          # metric to optimize
-  goal: minimize          # minimize validation loss
-parameters:
-  optimization.lr:
-    distribution: uniform
-    min: 0.0001
-    max: 0.1
-  batch_size:
-    distribution: categorical
-    values: [256, 512, 1024]
+  name: avg_val_loss
+  goal: minimize
 
+epochs: 50
+
+project: test        # replace with your project name
+entity: ahmad-baki-karlsruhe-institute-of-technology  # replace with your WandB entity
+
+parameters:
+  # ─ Optimizer selection & params ─────────────────────────────────────────────
+  optimizer.type:
+    distribution: categorical
+    values: ["adam", "adamw", "sgd", "ranger"] 
+  optimizer.betas0:
+    distribution: uniform
+    min: 0.8
+    max: 0.999
+  optimizer.betas1:
+    distribution: uniform
+    min: 0.9
+    max: 0.9999
+  # for SGD
+  optimizer.momentum:
+    distribution: uniform
+    min: 0.5
+    max: 0.99
+  lr:
+    distribution: log_uniform
+    min: !!float 1e-5
+    max: !!float 1e-1
+  weight_decay:
+    distribution: log_uniform
+    min: !!float 1e-8
+    max: !!float 1e-1
+
+  # ─ Scheduler ────────────────────────────────────────────────────────────────
+  scheduler.type:
+    distribution: categorical
+    values: ["steplr", "cosine", "onecycle", "reduceonplateau"]
+  scheduler.step_size:
+    distribution: int_uniform
+    min: 5
+    max: 20
+  scheduler.gamma:
+    distribution: uniform
+    min: 0.1
+    max: 0.9
+  scheduler.patience:
+    distribution: int_uniform
+    min: 2
+    max: 10            # only used for reduceonplateau
+  scheduler.max_lr:
+    distribution: log_uniform
+    min: !!float 1e-5
+    max: !!float 1e-2          # only for onecycle
+
+  # ─ Regularization & loss ──────────────────────────────────────────────────
   dropout:
     distribution: uniform
     min: 0.0
     max: 0.5
+  label_smoothing:
+    distribution: uniform
+    min: 0.0
+    max: 0.2
 
-  weight_decay:
-    distribution: log_uniform
-    min: !!float 1e-6
-    max: !!float 1e-2
+  # ─ Gradient clipping ──────────────────────────────────────────────────────
+  gradient_clip_max_norm:
+    distribution: uniform
+    min: 0.5
+    max: 2.0
+
+  # ─ Data / batch ────────────────────────────────────────────────────────────
+  batch_size:
+    distribution: categorical
+    values: [256, 512, 1024]
 
 command:
   - ${env}

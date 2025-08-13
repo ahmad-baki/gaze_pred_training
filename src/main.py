@@ -3,6 +3,7 @@ import math
 import os
 from time import time
 import hydra
+from matplotlib.pyplot import hist
 from omegaconf import DictConfig, OmegaConf
 import wandb
 import torch
@@ -13,6 +14,7 @@ from alive_progress import alive_bar
 
 from helper.preprocessed_gaze_dataset_workspace import PreprocessedGazeDatasetWorkspace
 from models.gaze_predictor import GazePredictorModel
+
 
 
 # from data import MyDataset  # Dein Dataset-Import
@@ -41,6 +43,18 @@ scaler = torch.amp.GradScaler(device=device)
 #     # WandB-Agent startet und ruft für jeden Trial train(cfg) auf
 #     wandb.agent(sweep_id, function=lambda: train(cfg), count=1)
 
+def accuracy_topk(outputs, targets, k=3):
+    """
+    outputs: Tensor of shape (B, C) before softmax
+    targets: Tensor of shape (B,) containing class indices [0..C-1]
+    returns: percentage of samples whose target is in top‐k preds
+    """
+    # get the top k predicted class indices
+    topk_vals, topk_inds = outputs.topk(k, dim=1, largest=True, sorted=True)
+    # targets.view(-1,1) is (B,1); compare to each of the k preds
+    correct = topk_inds.eq(targets.view(-1, 1)).any(dim=1).float()
+    return correct.mean().item()
+
 
 @hydra.main(config_path="conf", config_name="config")
 def train(cfg: DictConfig):
@@ -57,28 +71,107 @@ def train(cfg: DictConfig):
 
 
     train_loader, val_loader = get_data_loaders(cfg, batch_size=cfg.batch_size)
+    # ─── Compute per‐cell class weights ─────────────────────────────────────
+    # assumes each y is one‐hot of shape [B, 1, G, G] or [B, G*G]
+    all_labels = []
+    for x, y in train_loader:
+        idx = y.view(y.size(0), -1).argmax(dim=1)
+        all_labels.append(idx)
+    all_labels = torch.cat(all_labels)
+    counts = torch.bincount(all_labels, minlength=16*16).float()
+    freqs = counts / counts.sum()
+    class_weights = (1.0 / (freqs + 1e-6))
+    class_weights /= class_weights.mean()
+    class_weights = class_weights.to(device)
 
+    print(f"hist:")
+    hist = torch.bincount(all_labels, minlength=256).cpu()
+    print(hist[:20], hist.sum(), (hist==0).sum())  # quick peek
+
+    # model = hydra.utils.instantiate(cfg.model, dropout=cfg.dropout).to(device)
+    # optimizer = hydra.utils.instantiate(cfg.optimizer, params=model.parameters())
+    # criterion = hydra.utils.instantiate(cfg.loss)
     model = hydra.utils.instantiate(cfg.model, dropout=cfg.dropout).to(device)
-    optimizer = hydra.utils.instantiate(cfg.optimizer, params=model.parameters())
-    criterion = hydra.utils.instantiate(cfg.loss)
+
+    # ─── Optimizer factory ───────────────────────────────────────────────
+    optim_type = cfg.optimizer.type.lower()
+    if optim_type in ("adam", "adamw"):
+        Optim = torch.optim.AdamW if optim_type == "adamw" else torch.optim.Adam
+        optimizer = Optim(
+            model.parameters(),
+            lr=cfg.lr,
+            betas=(cfg.optimizer.betas0, cfg.optimizer.betas1),
+            weight_decay=cfg.weight_decay,
+        )
+    elif optim_type == "sgd":
+        # ensure you add `momentum` to your config if you want to sweep it
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=cfg.lr,
+            momentum=cfg.optimizer.momentum,
+            weight_decay=cfg.weight_decay,
+        )
+    elif optim_type == "ranger":
+        from ranger import Ranger  
+        optimizer = Ranger(
+            model.parameters(),
+            lr=cfg.lr,
+            betas=(cfg.optimizer.betas0, cfg.optimizer.betas1),
+            weight_decay=cfg.weight_decay,
+        )
+    else:
+        raise ValueError(f"Unknown optimizer type: {cfg.optimizer.type}")
+
+    # ─── Loss with label smoothing & weights ─────────────────────────────
+    # criterion = torch.nn.CrossEntropyLoss(
+    #     weight=class_weights,
+    #     label_smoothing=cfg.label_smoothing,
+    # )
+    criterion = torch.nn.CrossEntropyLoss()
+    # ─── Scheduler factory ────────────────────────────────────────────────
+    sched_cfg = cfg.scheduler
+    if sched_cfg.type == "steplr":
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=sched_cfg.step_size,
+            gamma=sched_cfg.gamma
+        )
+    elif sched_cfg.type == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=cfg.epochs
+        )
+    elif sched_cfg.type == "onecycle":
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=sched_cfg.max_lr,
+            total_steps=cfg.epochs * len(train_loader)
+        )
+    else:  # reduceonplateau
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            patience=sched_cfg.patience,
+            factor=sched_cfg.gamma
+        )
 
     setup_time = time() - setup_start
 
     # ──────── TRAINING ───────────────────────
-    csv_path = os.path.join(save_dir, 'timings.csv')
-    file_exists = os.path.isfile(csv_path)
-    csv_file = open(csv_path, 'a', newline='')
-    csv_writer = csv.writer(csv_file)
-    if not file_exists:
-        csv_writer.writerow(['epoch', 'epoch_time', 'data_loading_time',
-                             'model_running_time', 'update_step_time'])
+    # csv_path = os.path.join(save_dir, 'timings.csv')
+    # file_exists = os.path.isfile(csv_path)
+    # csv_file = open(csv_path, 'a', newline='')
+    # csv_writer = csv.writer(csv_file)
+    # if not file_exists:
+    #     csv_writer.writerow(['epoch', 'epoch_time', 'data_loading_time',
+    #                          'model_running_time', 'update_step_time'])
 
     # ── TRAINING LOOP ────────────────────
     sum_data_loading = sum_model_running = sum_update = 0.0
-    training_start = time()
+    # training_start = time()
 
     best_val_loss = math.inf
     best_model_save_path = ""
+
     with alive_bar(cfg.epochs, title="Training") as bar:
         for epoch in range(cfg.epochs):
             bar.text = f"Epoch {epoch+1}/{cfg.epochs}"
@@ -91,6 +184,7 @@ def train(cfg: DictConfig):
             # -- Track Training Accuracy --
             train_correct = 0
             train_total = 0
+            train_topk_acc_sum = 0.0
 
             # -- Tracking Training Loss --
             sum_train_loss = 0.0
@@ -118,13 +212,23 @@ def train(cfg: DictConfig):
 
                 # Track accuracy
                 pred_idx = outputs.argmax(dim=1)
+                # Top-1
                 train_correct += (pred_idx == target_idx).sum().item()
+                # Top-k
+                batch_topk_acc = accuracy_topk(outputs, target_idx, cfg.top_k)
+                train_topk_acc_sum += batch_topk_acc * y.size(0)
                 train_total += y.size(0)
                 sum_train_loss += loss.item()
 
                 # Backward + update timer
                 us_start = time()
                 scaler.scale(loss).backward()
+                # ─── gradient clipping ────────────────────────────
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(),
+                    cfg.gradient_clip_max_norm
+                )
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
@@ -135,6 +239,7 @@ def train(cfg: DictConfig):
             # -- Track Validation Accuracy --
             val_correct = 0
             val_total = 0
+            val_topk_acc_sum = 0.0
 
             # -- Track Validation Loss --
             sum_validation_loss = 0.0
@@ -153,27 +258,48 @@ def train(cfg: DictConfig):
                     # Model forward + loss timer
                     mr_start = time()
                     outputs = model(x)
-                    loss = criterion(outputs, y)
+                    target_idx = y.view(y.size(0), -1).argmax(dim=1)
+                    # print(f"y shape: {y.shape}, target_idx shape: {target_idx.shape}")
+                    # print(f"test y: {y[0]}, target_idx: {target_idx[0]}")
+                    # print(f"outputs shape: {outputs.shape}")
+                    # print(f"outputs: {outputs[0]}")
+                    # print(f"outputs argmax: {outputs.argmax(dim=1)[0]}")
+                    loss = criterion(outputs, target_idx)
                     mr_end = time()
                     epoch_mr += (mr_end - mr_start)
                     sum_model_running += (mr_end - mr_start)
 
                     # Track accuracy
-                    pred_idx = outputs.view(outputs.size(0), -1).argmax(dim=1)
-                    target_idx = y.view(y.size(0), -1).argmax(dim=1)
+                    pred_idx = outputs.argmax(dim=1)
+                    # Top-1
                     val_correct += (pred_idx == target_idx).sum().item()
+                    # Top-k
+                    batch_topk_acc = accuracy_topk(outputs, target_idx, cfg.top_k)
+                    val_topk_acc_sum += batch_topk_acc * y.size(0)
                     val_total += y.size(0)
 
                     sum_validation_loss += loss.item()
 
-            epoch_time = time() - epoch_start
 
-            # -- Log epoch results --
+            # ─── acc and loss calc ─────────────────────────────────
             avg_train_acc = train_correct / train_total if train_total > 0 else 0
             avg_val_acc = val_correct / val_total if val_total > 0 else 0
+            avg_train_topk_acc = train_topk_acc_sum / train_total if train_total > 0 else 0
+            avg_val_topk_acc = val_topk_acc_sum / val_total if val_total > 0 else 0
 
             avg_train_loss = sum_train_loss / train_batches
             avg_val_loss = sum_validation_loss / val_batches
+
+            # ─── step scheduler ─────────────────────────────────
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(avg_val_loss)
+            else:
+                scheduler.step()
+
+            epoch_time = time() - epoch_start
+
+            # -- Log epoch results --
+
 
             if epoch % cfg.model_save_interval == 0 and best_val_loss > avg_val_loss:
                 model_save_path = os.path.join(save_dir, f'model_epoch_{epoch+1}.pth')
@@ -192,41 +318,45 @@ def train(cfg: DictConfig):
             #     f"{epoch_us:.4f}",
             # ])
 
+
             # Log to W&B
             wandb.log({
+                "avg_train_loss": avg_train_loss,
+                "avg_val_loss": avg_val_loss,
+                "avg_train_acc": avg_train_acc,
+                "avg_val_acc": avg_val_acc,
+                f"avg_train_top{cfg.top_k}_acc": avg_train_topk_acc,
+                f"avg_val_top{cfg.top_k}_acc": avg_val_topk_acc,
                 "epoch": epoch,
                 "epoch_time": epoch_time,
                 "data_loading_time": epoch_dl,
                 "model_running_time": epoch_mr,
                 "update_step_time": epoch_us,
-                "avg_train_loss": avg_train_loss,
-                "avg_val_loss": avg_val_loss,
-                "avg_train_acc": avg_train_acc,
-                "avg_val_acc": avg_val_acc,
             })
             print(f"Epoch {epoch+1} time: {epoch_time:.2f}s "
                   f"(dl: {epoch_dl:.2f}s, mr: {epoch_mr:.2f}s, us: {epoch_us:.2f}s)")
             print(f"Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
             print(f"Avg Train Acc: {avg_train_acc:.4f}, Avg Val Acc: {avg_val_acc:.4f}")
+            print(f"Avg Train Top-{cfg.top_k} Acc: {avg_train_topk_acc:.4f}, Avg Val Top-{cfg.top_k} Acc: {avg_val_topk_acc:.4f}")
 
     torch.save(model.state_dict(), save_dir + '/model.pth')
     print("Training complete.")
     # ──────── FINALIZE ──────────────────────
-    training_time = time() - training_start
-    csv_file.close()
+    # training_time = time() - training_start
+    # csv_file.close()
 
-    # ──────── SUMMARY ────────────────────────
-    total_time = setup_time + training_time
-    totals = {
-        "setup_time":         f"{100 * setup_time / total_time:.4f}%",
-        "training_time":      f"{100 * training_time / total_time:.4f}%",
-        "data_loading_time":  f"{100 * sum_data_loading / total_time:.4f}%",
-        "model_running_time": f"{100 * sum_model_running / total_time:.4f}%",
-        "update_step_time":   f"{100 * sum_update / total_time:.4f}%",
-        "total_time":         f"{total_time:.4f}s"
-    }
-    totals_csv = os.path.join(save_dir, 'totals.csv')
-    file_exists = os.path.isfile(totals_csv)
+    # # ──────── SUMMARY ────────────────────────
+    # total_time = setup_time + training_time
+    # totals = {
+    #     "setup_time":         f"{100 * setup_time / total_time:.4f}%",
+    #     "training_time":      f"{100 * training_time / total_time:.4f}%",
+    #     "data_loading_time":  f"{100 * sum_data_loading / total_time:.4f}%",
+    #     "model_running_time": f"{100 * sum_model_running / total_time:.4f}%",
+    #     "update_step_time":   f"{100 * sum_update / total_time:.4f}%",
+    #     "total_time":         f"{total_time:.4f}s"
+    # }
+    # totals_csv = os.path.join(save_dir, 'totals.csv')
+    # file_exists = os.path.isfile(totals_csv)
 
     # Open in append mode, write header if new, then write totals
     # with open(totals_csv, 'a', newline='') as f_tot:
@@ -254,16 +384,10 @@ def train(cfg: DictConfig):
 
 
 def get_data_loaders(config, batch_size):
-    # dataset = PreprocessedGazeDatasetWorkspace(
-    #     image_dir=config.dataset.image_dir,
-    #     label_dir=config.dataset.label_dir
-    #     # transform=config.dataset.transform
-    # )
-
+    # Create dataset; note that 'task' can be a string or a list of tasks
     dataset = PreprocessedGazeDatasetWorkspace(
         dir=config.dataset.dir,
-        task=config.dataset.task,
-        # transform=config.dataset.transform
+        tasks=config.dataset.tasks,
     )
 
     # split sizes
@@ -283,22 +407,16 @@ def get_data_loaders(config, batch_size):
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=8,             # bump up
-        pin_memory=True,
-        persistent_workers=True,   # workers stick around
-        prefetch_factor=4          # how many batches each worker preloads
-    )
+        num_workers=8,        pin_memory=True,
+        persistent_workers=True,        prefetch_factor=4    )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=8,             # bump up
-        pin_memory=True,
-        persistent_workers=True,   # workers stick around
-        prefetch_factor=4          # how many batches each worker preloads
-    )
+        num_workers=8,        pin_memory=True,
+        persistent_workers=True,        prefetch_factor=4    )
     print(f"Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
-    return train_loader,val_loader
+    return train_loader, val_loader
 
 
 if __name__ == "__main__":

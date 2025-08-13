@@ -20,25 +20,26 @@ class PreprocessedGazeDatasetWorkspace(Dataset):
     def __init__(self,
                  dir: Path,
                  transform=None,
-                 task: str | None = None
+                 tasks: list[str] | None = None
                  ):
         self.dir = Path(dir)
 
         self.image_files = []
         self.gaze_array = np.empty((0, 16, 16), dtype=np.float32)  # shape: (N, H, W)
 
-        if task is not None:
-            # if a specific task is given, only load that one
-            task_dir = self.dir / task
-            if not task_dir.exists():
-                raise ValueError(f"Task directory {task_dir} does not exist.")
-            self.get_data(task_dir)
+        if tasks is not None:
+            if not isinstance(tasks, list):
+                raise TypeError("Parameter 'task' must be a list of strings.")
+            for t in tasks:
+                task_dir = self.dir / t
+                if not task_dir.exists():
+                    raise ValueError(f"Task directory {task_dir} does not exist.")
+                self.get_data(task_dir)
         else:
             for task_iter in self.dir.iterdir():
                 if not task_iter.is_dir():
                     continue
                 self.get_data(task_iter)
-        
 
         # optional image transform (e.g. ToTensor, Normalize)
         self.transform = transform or T.ToTensor()
@@ -55,7 +56,7 @@ class PreprocessedGazeDatasetWorkspace(Dataset):
                     if fn.lower().endswith(('.png', '.jpg', '.jpeg'))
                     ])
 
-                # load all gaze maps at once
+            # load all gaze maps at once
             gaze_path = path / 'gaze_vectors.npy'
             assert gaze_path.exists(), \
                     f"Gaze vectors file not found: {gaze_path}"
