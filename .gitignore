@@ -23,6 +23,7 @@ outputs/
 wandb/
 logs/
 log/
+logs_train/
 path/
 time_logs/
 # ignore all folders that start with "gifs"

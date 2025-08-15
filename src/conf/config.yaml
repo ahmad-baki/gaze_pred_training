@@ -2,7 +2,7 @@
 
 defaults:
   - models@model: gaze_pre
-  - dataset@dataset: gaze_dataset_workspace
+  - dataset@dataset: gaze_dataset_workspace_pear_banana_in_sink
 
 wandb:
   project: test        # replace with your project name
@@ -50,11 +50,14 @@ scheduler:
 # ────────────────────────────────────────────────────────
 # Loss & regularization
 # label smoothing is applied in CrossEntropyLoss
-label_smoothing: 0.0
+# label_smoothing: 0.0
 
 # ────────────────────────────────────────────────────────
 # Gradient clipping
 gradient_clip_max_norm: 1.0
+
+sampler: random_sampler # weighted_random_sampler
+alpha: 0.5
 
 # ────────────────────────────────────────────────────────
 # Loss instantiation

@@ -2,15 +2,16 @@
 program: main.py
 method: bayes   
 metric:
-  name: avg_val_loss
+  name: avg_val_distance
   goal: minimize
 
-epochs: 50
 
-project: test        # replace with your project name
+project: gaze_pred_training       # gaze_pred_training, test
 entity: ahmad-baki-karlsruhe-institute-of-technology  # replace with your WandB entity
 
 parameters:
+  epochs: 
+    value: 50
   # ─ Optimizer selection & params ─────────────────────────────────────────────
   optimizer.type:
     distribution: categorical
@@ -29,13 +30,13 @@ parameters:
     min: 0.5
     max: 0.99
   lr:
-    distribution: log_uniform
-    min: !!float 1e-5
-    max: !!float 1e-1
+    distribution: log_uniform_values
+    min: !!float 1e-6
+    max: !!float 1e-4
   weight_decay:
-    distribution: log_uniform
+    distribution: log_uniform_values
     min: !!float 1e-8
-    max: !!float 1e-1
+    max: !!float 1e-4
 
   # ─ Scheduler ────────────────────────────────────────────────────────────────
   scheduler.type:
@@ -54,19 +55,19 @@ parameters:
     min: 2
     max: 10            # only used for reduceonplateau
   scheduler.max_lr:
-    distribution: log_uniform
+    distribution: log_uniform_values
     min: !!float 1e-5
-    max: !!float 1e-2          # only for onecycle
+    max: !!float 1e-1          # only for onecycle
 
   # ─ Regularization & loss ──────────────────────────────────────────────────
   dropout:
     distribution: uniform
     min: 0.0
     max: 0.5
-  label_smoothing:
-    distribution: uniform
-    min: 0.0
-    max: 0.2
+  # label_smoothing:
+  #   distribution: uniform
+  #   min: 0.0
+  #   max: 0.2
 
   # ─ Gradient clipping ──────────────────────────────────────────────────────
   gradient_clip_max_norm:
@@ -78,6 +79,20 @@ parameters:
   batch_size:
     distribution: categorical
     values: [256, 512, 1024]
+  sampler:
+    distribution: categorical
+    values: ["random_sampler", "weighted_random_sampler"]
+  # alpha is only used when sampler is WeightedRandomSampler
+  alpha:
+    distribution: uniform
+    min: 0.1
+    max: 1.0
+
+# --- Torch Sampler configurations for Hydra initialization ---
+
+
+# Usage example in code:
+# sampler = hydra.utils.instantiate(config.samplers[config.defaults[0].sampler])
 
 command:
   - ${env}

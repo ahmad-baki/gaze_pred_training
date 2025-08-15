@@ -1,3 +1,4 @@
+import contextlib
 import csv
 import math
 import os
@@ -16,32 +17,79 @@ from helper.preprocessed_gaze_dataset_workspace import PreprocessedGazeDatasetWo
 from models.gaze_predictor import GazePredictorModel
 
 
-
-# from data import MyDataset  # Dein Dataset-Import
-
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 scaler = torch.amp.GradScaler(device=device)
+autocast = torch.autocast(device_type="cuda", dtype=torch.float16) if torch.cuda.is_available() else contextlib.nullcontext()
 
-# @hydra.main(config_path="conf", config_name="config")
-# def run_main(cfg: DictConfig):
-#     print("Running main with config:", cfg)
-#     # Sweep-Definition in ein plain Dict umwandeln
-#     sweep_cfg = OmegaConf.to_container(
-#         cfg.sweep,
-#         resolve=True,
-#         throw_on_missing=True
-#     )
-#     # Sweep anlegen
-#     sweep_id = wandb.sweep(
-#         sweep=sweep_cfg,
-#         project=cfg.wandb.project,
-#         entity=cfg.wandb.entity
-#     )
-#     print(f"Created sweep: {sweep_id}")
+from typing import List, Tuple
+import torch
+from torch import Tensor
+from torch.utils.data import Subset, DataLoader
+import random
 
-#     # WandB-Agent startet und ruft für jeden Trial train(cfg) auf
-#     wandb.agent(sweep_id, function=lambda: train(cfg), count=1)
+def _label_index_from_y(y: Tensor) -> int:
+    # y may be (C,), (1,G,G), or (C,1,1). We just flatten and argmax.
+    return int(y.view(-1).argmax().item())
+
+def stratified_train_val_split(
+    dataset,
+    train_ratio: float,
+    num_classes: int = 256,
+    seed: int = 42,
+    ensure_val_min1: bool = True
+) -> Tuple[Subset, Subset, torch.Tensor]:
+    """
+    Build a stratified train/val split so each present class appears in train.
+
+    Args:
+        dataset: your Dataset yielding (x, y) with y one-hot-ish.
+        train_ratio: fraction for train (e.g., 0.8).
+        num_classes: total classes.
+        seed: RNG seed for reproducibility.
+        ensure_val_min1: if True, classes with >=2 samples get at least 1 in val.
+
+    Returns:
+        (train_subset, val_subset , class_frequencies)
+    """
+    # 1) Collect label per sample (O(N)). If this is slow, add a fast label accessor in your dataset.
+    all_labels: List[int] = []
+    for i in range(len(dataset)):
+        _, y = dataset[i]
+        all_labels.append(_label_index_from_y(y))
+
+    # 2) Group indices per class
+    idx_per_class: List[List[int]] = [[] for _ in range(num_classes)]
+    for i, c in enumerate(all_labels):
+        idx_per_class[c].append(i)
+
+    # 3) Per-class split
+    rng = random.Random(seed)
+    train_idx: List[int] = []
+    val_idx: List[int] = []
+    for c, idxs in enumerate(idx_per_class):
+        if not idxs:
+            continue  # class absent altogether
+        rng.shuffle(idxs)
+        n = len(idxs)
+        # at least 1 in train if class exists
+        k = max(1, int(round(train_ratio * n)))
+        if ensure_val_min1 and n >= 2:
+            # ensure at least 1 goes to val too
+            k = min(k, n - 1)
+        train_idx.extend(idxs[:k])
+        val_idx.extend(idxs[k:])
+
+    # 4) Build subsets
+    class_frequencies = torch.zeros(num_classes, dtype=torch.long)
+    for c, idxs in enumerate(idx_per_class):
+        class_frequencies[c] = len(idxs)
+    return Subset(dataset, train_idx), Subset(dataset, val_idx), class_frequencies
+
+# Usage inside get_data_loaders:
+# train_dataset, val_dataset, class_frequencies = stratified_train_val_split(dataset, cfg.dataset.train_split, num_classes=256)
+# train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, ...)
+# val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, ...)
+
 
 def accuracy_topk(outputs, targets, k=3):
     """
@@ -55,9 +103,123 @@ def accuracy_topk(outputs, targets, k=3):
     correct = topk_inds.eq(targets.view(-1, 1)).any(dim=1).float()
     return correct.mean().item()
 
+def _label_index_from_y(y: Tensor) -> int:
+    # y may be (C,), (1,G,G), or (C,1,1). We just flatten and argmax.
+    return int(y.view(-1).argmax().item())
+
+def labels_for_subset(subset: Subset) -> torch.Tensor:
+    """Return a length-|subset| tensor of class indices for the given subset."""
+    labels = torch.empty(len(subset), dtype=torch.long)
+    for i in range(len(subset)):
+        _, y = subset[i]
+        labels[i] = _label_index_from_y(y)
+    return labels
+
+import torch
+
+def sum_euclidean_distance_index(P: torch.Tensor, Q: torch.Tensor, grid_size: int = 16, center: bool = True) -> torch.Tensor:
+    """
+    Sum of Euclidean distances between positions from two indexed batches.
+
+    P, Q: tensors shaped (B), where each value is the index of the cell in the grid.
+    grid_size: side length (default 16).
+    center: if True, measure from cell centers (+0.5) instead of corners.
+
+    Returns: scalar tensor (sum over batch).
+    """
+    # Convert flat index -> (x, y)
+    yP = torch.div(P, grid_size, rounding_mode='floor')
+    xP = P - yP * grid_size
+    yQ = torch.div(Q, grid_size, rounding_mode='floor')
+    xQ = Q - yQ * grid_size
+
+    if center:
+        xP = xP.float() + 0.5
+        yP = yP.float() + 0.5
+        xQ = xQ.float() + 0.5
+        yQ = yQ.float() + 0.5
+    else:
+        xP = xP.float()
+        yP = yP.float()
+        xQ = xQ.float()
+        yQ = yQ.float()
+
+    d = torch.hypot(xP - xQ, yP - yQ)  # (B,)
+    return d.sum()
+
+
+def get_data_loaders(config, batch_size):
+    # Create dataset; note that 'task' can be a string or a list of tasks
+    print(config.dataset.tasks)
+    dataset = PreprocessedGazeDatasetWorkspace(
+        dir=config.dataset.dir,
+        tasks=config.dataset.tasks,
+    )
+
+    # split sizes
+    # total_size = len(dataset)
+    # train_size = int(config.dataset.train_split * total_size)
+    # val_size   = total_size - train_size
+
+    # First way: random
+    # train_dataset, val_dataset = random_split(
+    #     dataset,
+    #     [train_size, val_size],
+    #     generator=torch.Generator().manual_seed(42)
+    # )
+
+    # Second way: stratified so that every class is guaranteed to be represented
+    train_dataset, val_dataset, _ = stratified_train_val_split(dataset, config.dataset.train_split, num_classes=256)
+
+    # ── Build per-sample weights for the train subset ─────────────────────
+    train_labels = labels_for_subset(train_dataset)           # (N_train,)
+    counts = torch.bincount(train_labels, minlength=256).clamp_min(1).float()
+
+    # α controls how strong the balancing is: 0.0 = none, 1.0 = full inverse-freq
+    alpha = config.alpha
+    class_weights = counts.pow(-alpha)                        # (256,)
+    generator = torch.Generator()
+    generator.manual_seed(42)
+    sample_weights = class_weights[train_labels]              # (N_train,)
+
+    if config.sampler == "random_sampler":
+        sampler = torch.utils.data.RandomSampler(train_dataset)
+    else:  # config.sampler == "weighted_random_sampler"
+        sampler = torch.utils.data.WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(train_dataset),   # one "epoch" ~ same size as dataset
+            replacement=True,
+            generator=generator
+        )
+
+    # Random Weighted Sampler (reproducible if you pass a generator with a seed)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=8,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4
+    )
+    print(f"Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
+    return train_loader, val_loader
+
 
 @hydra.main(config_path="conf", config_name="config")
 def train(cfg: DictConfig):
+    print(f"epochs: {cfg.epochs}")
+    # region setup
     # ──────── SETUP ─────────────────────────
     setup_start = time()
     run = wandb.init(
@@ -66,13 +228,13 @@ def train(cfg: DictConfig):
         config=OmegaConf.to_container(cfg, resolve=True)
     )
     save_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"Created directory for time logs: {save_dir}")
 
-
+    print("Creating dataloader...")
     train_loader, val_loader = get_data_loaders(cfg, batch_size=cfg.batch_size)
+    print("Created Dataloader")
     # ─── Compute per‐cell class weights ─────────────────────────────────────
     # assumes each y is one‐hot of shape [B, 1, G, G] or [B, G*G]
+    print("Computing class weights...")
     all_labels = []
     for x, y in train_loader:
         idx = y.view(y.size(0), -1).argmax(dim=1)
@@ -83,14 +245,11 @@ def train(cfg: DictConfig):
     class_weights = (1.0 / (freqs + 1e-6))
     class_weights /= class_weights.mean()
     class_weights = class_weights.to(device)
-
-    print(f"hist:")
-    hist = torch.bincount(all_labels, minlength=256).cpu()
-    print(hist[:20], hist.sum(), (hist==0).sum())  # quick peek
-
+    print("Computed class weights")
     # model = hydra.utils.instantiate(cfg.model, dropout=cfg.dropout).to(device)
     # optimizer = hydra.utils.instantiate(cfg.optimizer, params=model.parameters())
     # criterion = hydra.utils.instantiate(cfg.loss)
+    print("Instantiating objects")
     model = hydra.utils.instantiate(cfg.model, dropout=cfg.dropout).to(device)
 
     # ─── Optimizer factory ───────────────────────────────────────────────
@@ -153,7 +312,7 @@ def train(cfg: DictConfig):
             patience=sched_cfg.patience,
             factor=sched_cfg.gamma
         )
-
+    print("Finished setting up training.")
     setup_time = time() - setup_start
 
     # ──────── TRAINING ───────────────────────
@@ -169,9 +328,12 @@ def train(cfg: DictConfig):
     sum_data_loading = sum_model_running = sum_update = 0.0
     # training_start = time()
 
-    best_val_loss = math.inf
+    best_val_dist = math.inf
     best_model_save_path = ""
 
+    # endregion
+    
+    print("Starting training...")
     with alive_bar(cfg.epochs, title="Training") as bar:
         for epoch in range(cfg.epochs):
             bar.text = f"Epoch {epoch+1}/{cfg.epochs}"
@@ -189,6 +351,7 @@ def train(cfg: DictConfig):
             # -- Tracking Training Loss --
             sum_train_loss = 0.0
             train_batches = 0
+            train_distance = 0.0  
             model.train()
             for x, y in train_loader:
                 train_batches += 1
@@ -203,22 +366,12 @@ def train(cfg: DictConfig):
 
                 # Model forward + loss timer
                 mr_start = time()
-                outputs = model(x)
-                target_idx = y.view(y.size(0), -1).argmax(dim=1)
-                loss = criterion(outputs, target_idx)
+                with autocast:
+                    outputs = model(x)
+                    target_idx = y.view(y.size(0), -1).argmax(dim=1)
+                    loss = criterion(outputs, target_idx)
                 mr_end = time()
-                epoch_mr += (mr_end - mr_start)
-                sum_model_running += (mr_end - mr_start)
-
-                # Track accuracy
-                pred_idx = outputs.argmax(dim=1)
-                # Top-1
-                train_correct += (pred_idx == target_idx).sum().item()
-                # Top-k
-                batch_topk_acc = accuracy_topk(outputs, target_idx, cfg.top_k)
-                train_topk_acc_sum += batch_topk_acc * y.size(0)
-                train_total += y.size(0)
-                sum_train_loss += loss.item()
+               
 
                 # Backward + update timer
                 us_start = time()
@@ -232,14 +385,34 @@ def train(cfg: DictConfig):
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
+
+                if sched_cfg.type == "onecycle":
+                    scheduler.step()
+
                 us_end = time()
                 epoch_us += (us_end - us_start)
                 sum_update += (us_end - us_start)
 
+                epoch_mr += (mr_end - mr_start)
+                sum_model_running += (mr_end - mr_start)
+
+                # Track accuracy
+                pred_idx = outputs.argmax(dim=1)
+                # Top-1
+                train_correct += (pred_idx == target_idx).sum().item()
+                # Top-k
+                batch_topk_acc = accuracy_topk(outputs, target_idx, cfg.top_k)
+                train_topk_acc_sum += batch_topk_acc * y.size(0)
+                train_distance += sum_euclidean_distance_index(pred_idx, target_idx)  # <-- Compute train batch distance
+                train_total += y.size(0)
+                sum_train_loss += loss.item()
+
             # -- Track Validation Accuracy --
+            
             val_correct = 0
             val_total = 0
             val_topk_acc_sum = 0.0
+            val_distance = 0.0
 
             # -- Track Validation Loss --
             sum_validation_loss = 0.0
@@ -257,14 +430,10 @@ def train(cfg: DictConfig):
                     sum_data_loading += (dl_end - dl_start)
                     # Model forward + loss timer
                     mr_start = time()
-                    outputs = model(x)
-                    target_idx = y.view(y.size(0), -1).argmax(dim=1)
-                    # print(f"y shape: {y.shape}, target_idx shape: {target_idx.shape}")
-                    # print(f"test y: {y[0]}, target_idx: {target_idx[0]}")
-                    # print(f"outputs shape: {outputs.shape}")
-                    # print(f"outputs: {outputs[0]}")
-                    # print(f"outputs argmax: {outputs.argmax(dim=1)[0]}")
-                    loss = criterion(outputs, target_idx)
+                    with autocast:
+                        outputs = model(x)
+                        target_idx = y.view(y.size(0), -1).argmax(dim=1)
+                        loss = criterion(outputs, target_idx)
                     mr_end = time()
                     epoch_mr += (mr_end - mr_start)
                     sum_model_running += (mr_end - mr_start)
@@ -275,6 +444,8 @@ def train(cfg: DictConfig):
                     val_correct += (pred_idx == target_idx).sum().item()
                     # Top-k
                     batch_topk_acc = accuracy_topk(outputs, target_idx, cfg.top_k)
+                    # calculate the eucledian distance if interpreted as position in 16x16 grid
+                    val_distance += sum_euclidean_distance_index(pred_idx, target_idx)
                     val_topk_acc_sum += batch_topk_acc * y.size(0)
                     val_total += y.size(0)
 
@@ -286,9 +457,11 @@ def train(cfg: DictConfig):
             avg_val_acc = val_correct / val_total if val_total > 0 else 0
             avg_train_topk_acc = train_topk_acc_sum / train_total if train_total > 0 else 0
             avg_val_topk_acc = val_topk_acc_sum / val_total if val_total > 0 else 0
+            avg_train_distance = train_distance / train_total if train_total > 0 else 0
+            avg_val_distance = val_distance / val_total if val_total > 0 else 0
 
-            avg_train_loss = sum_train_loss / train_batches
-            avg_val_loss = sum_validation_loss / val_batches
+            avg_train_loss = sum_train_loss / train_total if train_total > 0 else 0
+            avg_val_loss = sum_validation_loss / val_total if val_total > 0 else 0
 
             # ─── step scheduler ─────────────────────────────────
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -301,10 +474,10 @@ def train(cfg: DictConfig):
             # -- Log epoch results --
 
 
-            if epoch % cfg.model_save_interval == 0 and best_val_loss > avg_val_loss:
+            if epoch % cfg.model_save_interval == 0 and best_val_dist > avg_val_distance:
                 model_save_path = os.path.join(save_dir, f'model_epoch_{epoch+1}.pth')
                 model.save(model_save_path)
-                best_val_loss = avg_val_loss
+                best_val_dist = avg_val_distance
                 os.remove(best_model_save_path) if best_model_save_path else ""
                 best_model_save_path = model_save_path
                 print(f"Saved model checkpoint to {model_save_path}")
@@ -327,6 +500,8 @@ def train(cfg: DictConfig):
                 "avg_val_acc": avg_val_acc,
                 f"avg_train_top{cfg.top_k}_acc": avg_train_topk_acc,
                 f"avg_val_top{cfg.top_k}_acc": avg_val_topk_acc,
+                "avg_train_distance": avg_train_distance,
+                "avg_val_distance": avg_val_distance,
                 "epoch": epoch,
                 "epoch_time": epoch_time,
                 "data_loading_time": epoch_dl,
@@ -338,86 +513,11 @@ def train(cfg: DictConfig):
             print(f"Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
             print(f"Avg Train Acc: {avg_train_acc:.4f}, Avg Val Acc: {avg_val_acc:.4f}")
             print(f"Avg Train Top-{cfg.top_k} Acc: {avg_train_topk_acc:.4f}, Avg Val Top-{cfg.top_k} Acc: {avg_val_topk_acc:.4f}")
+            print(f"Avg Train Distance: {avg_train_distance:.4f}, Avg Val Distance: {avg_val_distance:.4f}")
 
     torch.save(model.state_dict(), save_dir + '/model.pth')
     print("Training complete.")
-    # ──────── FINALIZE ──────────────────────
-    # training_time = time() - training_start
-    # csv_file.close()
-
-    # # ──────── SUMMARY ────────────────────────
-    # total_time = setup_time + training_time
-    # totals = {
-    #     "setup_time":         f"{100 * setup_time / total_time:.4f}%",
-    #     "training_time":      f"{100 * training_time / total_time:.4f}%",
-    #     "data_loading_time":  f"{100 * sum_data_loading / total_time:.4f}%",
-    #     "model_running_time": f"{100 * sum_model_running / total_time:.4f}%",
-    #     "update_step_time":   f"{100 * sum_update / total_time:.4f}%",
-    #     "total_time":         f"{total_time:.4f}s"
-    # }
-    # totals_csv = os.path.join(save_dir, 'totals.csv')
-    # file_exists = os.path.isfile(totals_csv)
-
-    # Open in append mode, write header if new, then write totals
-    # with open(totals_csv, 'a', newline='') as f_tot:
-    #     print(f"Writing totals to {totals_csv}")
-    #     writer = csv.writer(f_tot)
-    #     if not file_exists:
-    #         writer.writerow([
-    #             'setup_time',
-    #             'training_time',
-    #             'data_loading_time',
-    #             'model_running_time',
-    #             'update_step_time',
-    #             'total_time'
-    #         ])
-    #     writer.writerow([
-    #         totals['setup_time'],
-    #         totals['training_time'],
-    #         totals['data_loading_time'],
-    #         totals['model_running_time'],
-    #         totals['update_step_time'],
-    #         totals['total_time'],
-    #     ])
-
     run.finish()
-
-
-def get_data_loaders(config, batch_size):
-    # Create dataset; note that 'task' can be a string or a list of tasks
-    dataset = PreprocessedGazeDatasetWorkspace(
-        dir=config.dataset.dir,
-        tasks=config.dataset.tasks,
-    )
-
-    # split sizes
-    total_size = len(dataset)
-    train_size = int(config.dataset.train_split * total_size)
-    val_size   = total_size - train_size
-
-    # do the split (with a fixed seed for reproducibility)
-    train_dataset, val_dataset = random_split(
-        dataset,
-        [train_size, val_size],
-        generator=torch.Generator().manual_seed(42)
-    )
-
-    # DataLoader für Training und Validierung
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=8,        pin_memory=True,
-        persistent_workers=True,        prefetch_factor=4    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=8,        pin_memory=True,
-        persistent_workers=True,        prefetch_factor=4    )
-    print(f"Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
-    return train_loader, val_loader
-
 
 if __name__ == "__main__":
     train()  # pylint: disable=no-value-for-parameter

@@ -4,7 +4,7 @@
 #SBATCH --output=logs/test_train/test_train_gaze_%j.out
 #SBATCH --error=logs/test_train/test_train_gaze_%j.err
 #SBATCH --time=00:30:00
-#SBATCH --partition=dev_gpu_h100
+#SBATCH --partition=gpu_h100_il
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1

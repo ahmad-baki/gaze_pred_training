@@ -175,6 +175,8 @@ def main():
     parser.add_argument("--output-dir", "-o", type=str, 
                         default="/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/graphics",
                         help="Directory to save the output image.")
+    parser.add_argument("--combine-task", "-c", default=True, action="store_true",
+                        help="Combine results from all tasks into a single output.")
     args = parser.parse_args()
 
     with initialize(version_base=None, config_path="../conf", job_name="gaze_and_model_gif"):
@@ -186,6 +188,49 @@ def main():
     else:
         tasks = cfg.dataset.tasks
 
+    if args.combine_task:
+        combine_task_vis(args, cfg, tasks)
+    else:
+        sep_task_vis(args, cfg, tasks)
+
+def combine_task_vis(args, cfg, tasks):
+    dataset = PreprocessedGazeDatasetWorkspace(
+        dir=cfg.dataset.dir,
+        tasks=tasks,
+    )
+    print(f"Dataset length for combined tasks: {len(dataset)}")
+    print("Creating DataLoader...")
+    loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=False)
+    print(f"Counting classes for task {tasks}...")
+    counts = class_counts(loader, num_classes=16*16)
+    print(f"Raw class counts for task {tasks}: {counts}")
+
+    counts = counts.float() / counts.sum()
+    img_sample = dataset[0][0].numpy().transpose(1, 2, 0)  # (C, H, W) -> (H, W, C)
+    img_sample = cv2.resize(img_sample, (1024, 1024))
+    img_sample = np.clip(img_sample, 0.0, 1.0)
+    img_sample = (img_sample * 255).astype(np.uint8)
+    img_sample = img_sample[:, :, ::-1]  # RGB -> BGR
+    img_sample = cv2.rotate(img_sample, cv2.ROTATE_180)
+    print(f"Sample image shape for task {tasks}: {img_sample.shape}")
+    print("Overlaying grid and highlighting prediction...")
+    img_with_grid = overlay_grid_and_highlight_pred(
+        img=img_sample,
+        values=counts,
+        nx=16,
+        ny=16,
+        grid_color=(0, 255, 0),
+        overlay_alpha=0.5
+    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"combined_gaze_distribution.png"
+    print(f"Saving image to {output_path}")
+    cv2.imwrite(str(output_path), img_with_grid)
+    print(f"Grid overlay for task {tasks} saved to {output_path}")
+
+
+def sep_task_vis(args, cfg, tasks):
     for task in tasks:
         dataset = PreprocessedGazeDatasetWorkspace(
             dir=cfg.dataset.dir,

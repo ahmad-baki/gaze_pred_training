@@ -7,6 +7,7 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
+from collections.abc import Iterable
 
 
 class PreprocessedGazeDatasetWorkspace(Dataset):
@@ -28,9 +29,11 @@ class PreprocessedGazeDatasetWorkspace(Dataset):
         self.gaze_array = np.empty((0, 16, 16), dtype=np.float32)  # shape: (N, H, W)
 
         if tasks is not None:
-            if not isinstance(tasks, list):
-                raise TypeError("Parameter 'task' must be a list of strings.")
-            for t in tasks:
+            try:
+                iterator = iter(tasks)
+            except TypeError:
+                raise TypeError("Parameter 'tasks' must be iterable.")
+            for t in iterator:
                 task_dir = self.dir / t
                 if not task_dir.exists():
                     raise ValueError(f"Task directory {task_dir} does not exist.")

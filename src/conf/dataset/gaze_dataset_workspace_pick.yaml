@@ -1,0 +1,5 @@
+  # Path to your pre‐resized images folder
+  dir: "/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/processed/3d/"
+  tasks:  ["pick"] # , "tower", "pear_banana_in_sink", "cucumber_in_pot", "box_on_tray_yellow"
+  # Fraction of data to use for training (e.g. 0.8 = 80% train, 20% val)
+  train_split: 0.8
