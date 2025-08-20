@@ -4,7 +4,7 @@
 #SBATCH --output=logs/train/train_gaze_%j.out
 #SBATCH --error=logs/train/train_gaze_%j.err
 #SBATCH --time=06:00:00
-#SBATCH --partition=gpu_a100_il
+#SBATCH --partition=gpu_h100_il
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
@@ -12,4 +12,4 @@
 module load devel/miniforge
 conda activate gaze_pred_train
 cd /home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/
-python3 main.py
+python3 src/main.py

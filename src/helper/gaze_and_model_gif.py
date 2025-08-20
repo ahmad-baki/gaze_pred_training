@@ -377,14 +377,14 @@ def main():
     parser.add_argument(
         '--target-dir', '-t',
         type=str,
-        default="/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/gifs",
+        default="/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/gifs/pear_banana_in_sink_1",
         help='Target directory for output GIFs'
     )
     
     parser.add_argument(
         '--task',
         type=str,
-        default='pick',
+        default='pear_banana_in_sink',
         help='Task name to process (use "all" to process all tasks)'
     )
     
@@ -398,7 +398,7 @@ def main():
     parser.add_argument(
         '--model-path', '-m',
         type=str,
-        default='/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/outputs/2025-08-05/07-41-15/model_epoch_71.pth',
+        default='/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/outputs/2025-08-16/11-40-47/model_epoch_177.pth',
         help='Path to the trained model file'
     )
     

@@ -4,7 +4,7 @@
 #SBATCH --output=logs/generate_gif/generate_gif_%j.out
 #SBATCH --error=logs/generate_gif/generate_gif_%j.err
 #SBATCH --time=00:30:00
-#SBATCH --partition=dev_gpu_a100_il
+#SBATCH --partition=gpu_h100_il
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1

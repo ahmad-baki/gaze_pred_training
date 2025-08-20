@@ -41,7 +41,9 @@ def random_points(h: int, w: int, margin: int, rng: np.random.Generator,
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("image", type=str, help="Path to the image file")
+    parser.add_argument("--image", type=str, 
+                        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/data/3d/pick/2025_07_08-13_32_06/sensors/continuous_device_/0.png", 
+                        help="Path to the image file")
     parser.add_argument("--size", type=int, default=20, help="Half-size of each X in pixels")
     parser.add_argument("--thickness", type=int, default=2, help="Line thickness of the X")
     parser.add_argument("--seed", type=int, default=None, help="Random seed (optional)")

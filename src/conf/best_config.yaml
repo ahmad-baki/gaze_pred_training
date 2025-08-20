@@ -1,11 +1,11 @@
-# conf/config.yaml
+# https://wandb.ai/ahmad-baki-karlsruhe-institute-of-technology/gaze_pred_training/runs/2nmnace5/
 
 defaults:
   - models@model: gaze_pre
   - dataset@dataset: gaze_dataset_workspace_pear_banana_in_sink
 
 wandb:
-  project: gaze_pred_training        # replace with your project name
+  project: test # gaze_pred_training        # replace with your project name
   entity: ahmad-baki-karlsruhe-institute-of-technology  # replace with your WandB entity
 
 # ────────────────────────────────────────────────────────
@@ -13,39 +13,39 @@ wandb:
 model_save_interval: 10      # save model checkpoint every n epochs
 epochs: 300
 top_k: 3
-dropout: 0.1
-batch_size: 16
+dropout: 0.18279632941608848
+batch_size: 512
 # note: code now uses cfg.lr, not `learning_rate`
-lr: 1e-5
-weight_decay: 1e-4
+lr: !!float 5.751833600952328e-06
+weight_decay: !!float 1.8820141960152387e-05
 
 # ────────────────────────────────────────────────────────
 # Optimizer
 optimizer:
   # one of: adam, adamw, sgd, ranger
-  type: ranger
+  type: adam
   # these will only be used by Adam/AdamW
-  betas0: 0.9
-  betas1: 0.999
+  betas0: 0.9551763556721846
+  betas1: 0.930329412625476
 
   # for SGD
-  momentum: 0.9
+  momentum: 0.8840302508317566
   
 # ────────────────────────────────────────────────────────
 # Learning‐rate Scheduler
 scheduler:
   # one of: steplr, cosine, onecycle, reduceonplateau
-  type: steplr
+  type: onecycle
   
   # for StepLR
-  step_size: 10
-  gamma: 0.5
+  step_size: 5
+  gamma: 0.2359669783993054
   
   # only for ReduceLROnPlateau
   patience: 5
   
   # only for OneCycleLR
-  max_lr: 1e-3
+  max_lr: !!float 3.794373153182155e-05
 
 # ────────────────────────────────────────────────────────
 # Loss & regularization
@@ -54,10 +54,12 @@ scheduler:
 
 # ────────────────────────────────────────────────────────
 # Gradient clipping
-gradient_clip_max_norm: 1.6012126020203064
+gradient_clip_max_norm: 1.0
 
 sampler: random_sampler # weighted_random_sampler
-alpha: 0.5
+
+# only used for weighted_random_sampler
+alpha: 0.2914457512154989
 
 # ────────────────────────────────────────────────────────
 # Loss instantiation

@@ -11,7 +11,7 @@ entity: ahmad-baki-karlsruhe-institute-of-technology  # replace with your WandB 
 
 parameters:
   epochs: 
-    value: 50
+    value: 130
   # ─ Optimizer selection & params ─────────────────────────────────────────────
   optimizer.type:
     distribution: categorical

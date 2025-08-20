@@ -116,7 +116,7 @@ def overlay_grid_and_highlight_pred(
         cv2.rectangle(overlay, (x0, y0), (x1, y1), color=cell_color, thickness=-1)
 
         if overlay_text:
-            text = f"{value/sum_val:.2f}"
+            text = f"{100*value/sum_val:.3f}%"
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.4
             thickness = 1

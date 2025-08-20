@@ -175,16 +175,16 @@ def get_data_loaders(config, batch_size):
     train_labels = labels_for_subset(train_dataset)           # (N_train,)
     counts = torch.bincount(train_labels, minlength=256).clamp_min(1).float()
 
-    # α controls how strong the balancing is: 0.0 = none, 1.0 = full inverse-freq
-    alpha = config.alpha
-    class_weights = counts.pow(-alpha)                        # (256,)
-    generator = torch.Generator()
-    generator.manual_seed(42)
-    sample_weights = class_weights[train_labels]              # (N_train,)
 
     if config.sampler == "random_sampler":
         sampler = torch.utils.data.RandomSampler(train_dataset)
     else:  # config.sampler == "weighted_random_sampler"
+        # α controls how strong the balancing is: 0.0 = none, 1.0 = full inverse-freq
+        alpha = config.alpha
+        class_weights = counts.pow(-alpha)                        # (256,)
+        generator = torch.Generator()
+        generator.manual_seed(42)
+        sample_weights = class_weights[train_labels]              # (N_train,)
         sampler = torch.utils.data.WeightedRandomSampler(
             weights=sample_weights,
             num_samples=len(train_dataset),   # one "epoch" ~ same size as dataset
@@ -216,9 +216,9 @@ def get_data_loaders(config, batch_size):
     return train_loader, val_loader
 
 
-@hydra.main(config_path="conf", config_name="config")
+@hydra.main(config_path="conf", config_name="best_config")
 def train(cfg: DictConfig):
-    print(f"epochs: {cfg.epochs}")
+    print(cfg)
     # region setup
     # ──────── SETUP ─────────────────────────
     setup_start = time()
@@ -228,6 +228,8 @@ def train(cfg: DictConfig):
         config=OmegaConf.to_container(cfg, resolve=True)
     )
     save_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    if not os.path.exists(os.path.join(save_dir, "checkpoints")):
+        os.makedirs(os.path.join(save_dir, "checkpoints"))
 
     print("Creating dataloader...")
     train_loader, val_loader = get_data_loaders(cfg, batch_size=cfg.batch_size)
@@ -466,21 +468,26 @@ def train(cfg: DictConfig):
             # ─── step scheduler ─────────────────────────────────
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 scheduler.step(avg_val_loss)
-            else:
+            elif sched_cfg.type != "onecycle":
                 scheduler.step()
 
             epoch_time = time() - epoch_start
 
-            # -- Log epoch results --
+            # -- Log epoch results --1
 
+            # save checkpoint
+            if epoch % cfg.model_save_interval == 0:
+                model_save_path = os.path.join(save_dir, "checkpoints", f'model_epoch_{epoch+1}.pth')
+                model.save(model_save_path)
 
-            if epoch % cfg.model_save_interval == 0 and best_val_dist > avg_val_distance:
+            # save best model
+            if best_val_dist > avg_val_distance:
                 model_save_path = os.path.join(save_dir, f'model_epoch_{epoch+1}.pth')
                 model.save(model_save_path)
                 best_val_dist = avg_val_distance
                 os.remove(best_model_save_path) if best_model_save_path else ""
                 best_model_save_path = model_save_path
-                print(f"Saved model checkpoint to {model_save_path}")
+                print(f"Saved best model to {model_save_path}")
 
             # Log to CSV
             # csv_writer.writerow([
