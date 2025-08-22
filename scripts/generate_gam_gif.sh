@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=generate_gif
-#SBATCH --output=logs/generate_gif/generate_gif_%j.out
-#SBATCH --error=logs/generate_gif/generate_gif_%j.err
+#SBATCH --job-name=generate_gam_gif
+#SBATCH --output=logs/generate_gam_gif/generate_gam_gif_%j.out
+#SBATCH --error=logs/generate_gam_gif/generate_gam_gif_%j.err
 #SBATCH --time=00:30:00
 #SBATCH --partition=gpu_h100_il
 #SBATCH --nodes=1

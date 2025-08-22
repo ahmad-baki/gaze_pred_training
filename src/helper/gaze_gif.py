@@ -122,21 +122,21 @@ def main():
     parser.add_argument(
         '--source-dir', '-s',
         type=str,
-        default=os.path.join('F:', 'bachelor_thesis', 'data', '3d'),
+        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data/3d",
         help='Source directory containing the data'
     )
     
     parser.add_argument(
         '--target-dir', '-t',
         type=str,
-        default=os.path.join('F:', 'bachelor_thesis', 'gif', '3d'),
+        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/gaze_pos_gif_point/cucumber_in_pot",
         help='Target directory for output GIFs'
     )
     
     parser.add_argument(
         '--task',
         type=str,
-        default='pick',
+        default='cucumber_in_pot',
         help='Task name to process (use "all" to process all tasks)'
     )
     

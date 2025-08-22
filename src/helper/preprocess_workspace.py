@@ -1,20 +1,17 @@
 import json
 import os
 from pathlib import Path
+import shutil
 
 from alive_progress import alive_bar
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as T
 
-def resize_image(inp_img: Image.Image, width: int, height: int) -> Image.Image:
-    """
-    inp_img: a PIL Image
-    returns: PIL Image resized to (width, height)
-    """
-    transform = T.Resize((height, width))
-    return transform(inp_img)
+def rescale_img(img: np.ndarray, target_width: int, target_height: int) -> np.ndarray:
+    return cv2.resize(img, (target_width, target_height))
 
 def resize_images_in_directory(src_dir: Path, tar_dir: Path, tar_width: int, tar_height: int):
     """
@@ -24,9 +21,16 @@ def resize_images_in_directory(src_dir: Path, tar_dir: Path, tar_width: int, tar
     tar_dir.mkdir(parents=True, exist_ok=True)
 
     for filename in os.listdir(src_dir):
-        if not (filename.lower().endswith('.png') or filename.lower().endswith('.jpg')):
+        if filename.lower().endswith('.txt'):
+            depth_data = np.loadtxt(src_dir / filename, dtype=np.float64)
+            depth_data = rescale_img(depth_data, tar_width, tar_height)
             continue
-        
+
+        if not (filename.lower().endswith('.png') or filename.lower().endswith('.jpg')):
+            # copy file from src to target
+            shutil.copy2(src_dir / filename, tar_dir / filename)
+            continue
+
         # Check if the file already exists in the target directory
         if os.path.exists(tar_dir / filename):
             print(f"Skipping {tar_dir / filename}, already processed.")
@@ -35,7 +39,7 @@ def resize_images_in_directory(src_dir: Path, tar_dir: Path, tar_width: int, tar
         img_path = src_dir / filename
         try:
             img = Image.open(img_path).convert('RGB')
-            resized_img = resize_image(img, tar_width, tar_height)
+            resized_img = rescale_img(np.array(img), tar_width, tar_height)
             # save via matplotlib to preserve original format & range
             plt.imsave(tar_dir / filename, np.array(resized_img))
         except Exception as e:
@@ -111,9 +115,9 @@ TARGET_GAZE_WIDTH = 16
 # SOURCE_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/raw')
 # TARGET_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed')
 
-SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/data/3d')
+SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped/3d')
 SUB_DIR = Path('sensors/continuous_device_')
-TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/processed/3d')
+TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_processed/3d')
 
 if __name__ == "__main__":
     print("Starting preprocessing...")
