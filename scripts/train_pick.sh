@@ -12,4 +12,4 @@
 module load devel/miniforge
 conda activate gaze_pred_train
 cd /home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/
-python3 src/main.py
+python3 src/main.py dataset=gaze_dataset_workspace_pick

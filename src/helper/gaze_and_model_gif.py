@@ -3,6 +3,7 @@ from typing import Tuple
 import sys
 import os
 import torchvision.transforms as T
+import copy
 
 
 # Add the parent directory (src) to the Python path
@@ -32,6 +33,7 @@ def overlay_grid_and_highlight_pred(
     values: np.ndarray,
     nx: int = 16,
     ny: int = 16,
+    rectangle_size: Tuple[int, int] = (70, 70),
     grid_color: Tuple[int,int,int] = (0, 255, 0),
     grid_thickness: int = 1,
     overlay_alpha: float = 0.5
@@ -113,17 +115,18 @@ def overlay_grid_and_highlight_pred(
     # 8. Highlight the cell with highest probability with black rectangle border
     max_row = max_idx // nx
     max_col = max_idx % nx
-    max_x0, max_y0 = max_col * dx, max_row * dy
-    max_x1, max_y1 = max_x0 + dx, max_y0 + dy
-    cv2.rectangle(out, (max_x0, max_y0), (max_x1, max_y1), color=(0, 0, 0), thickness=3)
+    max_x0, max_y0 = max_col * dx + dx//2 - rectangle_size[0]//2, max_row * dy + dy//2 - rectangle_size[1]//2
+    max_x1, max_y1 = max_x0 + rectangle_size[0], max_y0 + rectangle_size[1]
 
-    # 9. Draw grid lines on top
-    for i in range(1, nx):
-        x = i * dx
-        cv2.line(out, (x, 0), (x, h), color=grid_color, thickness=grid_thickness)
-    for j in range(1, ny):
-        y = j * dy
-        cv2.line(out, (0, y), (w, y), color=grid_color, thickness=grid_thickness)
+    cv2.rectangle(out, (max_x0, max_y0), (max_x1, max_y1), color=(0, 0, 0), thickness=2)
+
+    # # 9. Draw grid lines on top
+    # for i in range(1, nx):
+    #     x = i * dx
+    #     cv2.line(out, (x, 0), (x, h), color=grid_color, thickness=grid_thickness)
+    # for j in range(1, ny):
+    #     y = j * dy
+    #     cv2.line(out, (0, y), (w, y), color=grid_color, thickness=grid_thickness)
 
     return out
 
@@ -181,13 +184,13 @@ def overlay_grid_and_highlight_true(
     dx = w // nx
     dy = h // ny
 
-    # 3. Draw grid lines
-    for i in range(1, nx):
-        x = i * dx
-        cv2.line(out, (x, 0), (x, h), color=grid_color, thickness=grid_thickness)
-    for j in range(1, ny):
-        y = j * dy
-        cv2.line(out, (0, y), (w, y), color=grid_color, thickness=grid_thickness)
+    # # 3. Draw grid lines
+    # for i in range(1, nx):
+    #     x = i * dx
+    #     cv2.line(out, (x, 0), (x, h), color=grid_color, thickness=grid_thickness)
+    # for j in range(1, ny):
+    #     y = j * dy
+    #     cv2.line(out, (0, y), (w, y), color=grid_color, thickness=grid_thickness)
 
     # 4. Locate active cell 
     row, col = pos_tuple
@@ -291,13 +294,13 @@ def process_gaze_gif(source_dir, target_dir, model_path, task, skip_amount=10):
                 print(f'[INFO] target folder {target_folder} does not exist, creating it')
                 os.makedirs(target_folder)
                 
-            with imageio.get_writer(target_gif_path, mode='I') as writer:
+            with imageio.get_writer(target_gif_path, mode='I', fps=15) as writer:
                 palette = None
                 for i in range(0, len(image_files), skip_amount):
 
                     image_file_path = image_files[i]
                     image: np.ndarray = cv2.imread(image_file_path)
-                    image = rescale_img(image)                        
+                    image = rescale_img(copy.deepcopy(image))
                     # rotate image 180 degrees
                     # image_rotated = cv2.rotate(copy.deepcopy(image), cv2.ROTATE_180)
                     image_rotated = cv2.rotate(image, cv2.ROTATE_180)
@@ -340,7 +343,7 @@ def process_gaze_gif(source_dir, target_dir, model_path, task, skip_amount=10):
                     # Convert prediction tensor to numpy array for visualization
                     pred_values = gaze_pos_pred.softmax(dim=1).view(16, 16).detach().cpu().numpy()  # Shape: (16, 16) for 16x16 grid
                     # flip vertically
-                    pred_values = np.flipud(pred_values)
+                    # pred_values = np.flipud(pred_values)
 
                     # Overlay grid and highlight cells based on prediction values
                     image_pred_overlay = overlay_grid_and_highlight_pred(
@@ -370,14 +373,14 @@ def main():
     parser.add_argument(
         '--source-dir', '-s',
         type=str,
-        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/old_frame/data/3d",
+        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped/3d",
         help='Source directory containing the data'
     )
     
     parser.add_argument(
         '--target-dir', '-t',
         type=str,
-        default="/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/gifs/pear_banana_in_sink_1",
+        default="/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/gifs/new_frame/",
         help='Target directory for output GIFs'
     )
     
@@ -398,7 +401,7 @@ def main():
     parser.add_argument(
         '--model-path', '-m',
         type=str,
-        default='/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/outputs/2025-08-16/11-40-47/model_epoch_177.pth',
+        default='/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/outputs/2025-08-23/22-15-24/checkpoints/model_epoch_131.pth',
         help='Path to the trained model file'
     )
     

@@ -25,7 +25,7 @@ def process_gaze_gif(source_dir, target_dir, task, skip_amount=10):
         print(f'[INFO] target directory {target_dir} does not exist, creating it')
         os.makedirs(target_dir)
 
-    task_dir = os.listdir(source_dir) if task == 'all' else [task]
+    task_dir = os.listdir(source_dir) if task == '' else [task]
     if len(task_dir) == 0:
         print(f'[ERROR] no task directories found in {source_dir}, exiting')
         return False
@@ -122,22 +122,22 @@ def main():
     parser.add_argument(
         '--source-dir', '-s',
         type=str,
-        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data/3d",
+        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped/3d",
         help='Source directory containing the data'
     )
     
     parser.add_argument(
         '--target-dir', '-t',
         type=str,
-        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/gaze_pos_gif_point/cucumber_in_pot",
+        default="/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/gaze_pos_gif_point/",
         help='Target directory for output GIFs'
     )
     
     parser.add_argument(
         '--task',
         type=str,
-        default='cucumber_in_pot',
-        help='Task name to process (use "all" to process all tasks)'
+        default='',
+        help='Task name to process (use empty string to process all tasks)'
     )
     
     parser.add_argument(

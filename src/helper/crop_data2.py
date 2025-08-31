@@ -11,11 +11,29 @@ from PIL import Image
 import torchvision.transforms as T
 
 # --- Source/crop constants ---
-SRC_WIDTH = 640
+SRC_WIDTH = 360
 SRC_HEIGHT = 360
-CROP_X0 = 200
-CROP_X1 = 560               # 200 + 360
+# crop the top 60 pixels
+CROP_X0 = 0
+CROP_X1 = 360
+CROP_Y0 = 60
+CROP_Y1 = 360
 CROP_WIDTH = CROP_X1 - CROP_X0  # 360
+CROP_HEIGHT = CROP_Y1 - CROP_Y0  # 300  
+TARGET_GAZE_HEIGHT = 16
+TARGET_GAZE_WIDTH = 16
+
+SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped/3d')
+SUB_DIR = Path('sensors/continuous_device_')
+TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped_all/3d')
+
+LANG_INSTRUCTIONS = {
+    "pear_banana_in_sink": "First pick up the green pear and place it completely inside the sink. \
+        Then pick up the yellow banana and place it completely inside the sink.",
+    "cucumber_in_pot": "Pick up the green cucumber and place it fully inside the pot.",
+    "box_on_tray_yellow": "Pick up the yellow cube and put it onto the yellow tray.",
+    "pick": "Pick up the orange cube."
+}
 
 # def resize_image(inp_img: np.ndarray, width: int, height: int) -> np.ndarray:
 #     """
@@ -36,7 +54,7 @@ def detect_need_crop(src_dir: Path) -> bool:
             try:
                 with Image.open(src_dir / filename) as im:
                     w, h = im.size
-                return w > CROP_WIDTH
+                return w > CROP_WIDTH or h > CROP_HEIGHT
             except Exception:
                 pass
 
@@ -45,7 +63,7 @@ def detect_need_crop(src_dir: Path) -> bool:
             try:
                 depth_data = np.loadtxt(src_dir / filename, dtype=np.float64)
                 n = depth_data.shape[0]
-                if n == (SRC_HEIGHT * CROP_WIDTH):
+                if n == (CROP_HEIGHT * CROP_WIDTH):
                     return False  # already cropped
                 elif n == (SRC_HEIGHT * SRC_WIDTH):
                     return True   # needs cropping
@@ -89,16 +107,16 @@ def crop_images_in_directory(
 
                 # Reshape to image
                 n = depth_data.shape[0]
-                if n == SRC_HEIGHT * SRC_WIDTH:
-                    depth_img = depth_data.reshape(SRC_HEIGHT, SRC_WIDTH, 3)
-                elif n == SRC_HEIGHT * CROP_WIDTH:
+                if n == CROP_HEIGHT * CROP_WIDTH:
+                    depth_img = depth_data.reshape(CROP_HEIGHT, CROP_WIDTH, 3)
+                elif n == SRC_HEIGHT * SRC_WIDTH:
                     depth_img = depth_data.reshape(SRC_HEIGHT, CROP_WIDTH, 3)
                 else:
-                    raise ValueError(f"Unexpected depth length {n}, expected {SRC_HEIGHT*SRC_WIDTH} or {SRC_HEIGHT*CROP_WIDTH}")
+                    raise ValueError(f"Unexpected depth length {n}, expected {SRC_HEIGHT*SRC_WIDTH} or {CROP_HEIGHT*CROP_WIDTH}")
 
-                # Crop iff needed
+                # Crop if needed
                 if need_crop and depth_img.shape[1] == SRC_WIDTH:
-                    depth_img = depth_img[:, CROP_X0:CROP_X1, :]
+                    depth_img = depth_img[CROP_Y0:CROP_Y1, CROP_X0:CROP_X1, :]
 
                 # # ALWAYS resize
                 # depth_resized = resize_image(depth_img, tar_width, tar_height)
@@ -116,9 +134,9 @@ def crop_images_in_directory(
                 with Image.open(src_path).convert('RGB') as img_pil:
                     img_npy = np.array(img_pil)
 
-                # Crop iff needed
-                if need_crop and img_npy.shape[1] == SRC_WIDTH:
-                    img_npy = img_npy[:, CROP_X0:CROP_X1, :]
+                # Crop if needed
+                if need_crop and img_npy.shape[1] == SRC_WIDTH and img_npy.shape[0] == SRC_HEIGHT:
+                    img_npy = img_npy[CROP_Y0:CROP_Y1, CROP_X0:CROP_X1, :]
 
                 # ALWAYS resize
                 # resized = resize_image(img_npy, tar_width, tar_height)
@@ -179,12 +197,17 @@ def crop_gaze(
             x_px_full = x_norm * SRC_WIDTH
             x_px_cropped = x_px_full - (SRC_WIDTH - CROP_X1)
             x_norm_effective = float(np.clip(x_px_cropped / CROP_WIDTH, 0.0, 1.0))
+
+            y_px_full = y_norm * SRC_HEIGHT
+            y_px_cropped = y_px_full - CROP_Y0
+            y_norm_effective = float(np.clip(y_px_cropped / CROP_HEIGHT, 0.0, 1.0))
         else:
             x_norm_effective = x_norm
+            y_norm_effective = y_norm
 
         new_data = {
             'x': x_norm_effective,
-            'y': y_norm
+            'y': y_norm_effective
         }
 
         # save as json-file
@@ -193,28 +216,13 @@ def crop_gaze(
     return True
 
 
-TARGET_IMG_HEIGHT = 224
-TARGET_IMG_WIDTH = 224
-TARGET_GAZE_HEIGHT = 16
-TARGET_GAZE_WIDTH = 16
 
-SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data/3d')
-SUB_DIR = Path('sensors/continuous_device_')
-TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped/3d')
-
-lang_instructions = {
-    "pear_banana_in_sink": "First pick up the green pear and place it completely inside the sink. \
-        Then pick up the yellow banana and place it completely inside the sink.",
-    "cucumber_in_pot": "Pick up the green cucumber and place it fully inside the pot.",
-    "box_on_tray_yellow": "Pick up the yellow cube and put it onto the yellow tray.",
-    "pick": "Pick up the orange cube."
-}
 
 def add_language_instruction(target_dir, task_name):
     filepath = target_dir / 'language_instruction.txt'
     if filepath.exists():
         return False
-    instr = lang_instructions.get(task_name)
+    instr = LANG_INSTRUCTIONS.get(task_name)
     if instr:
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(instr)
@@ -254,8 +262,8 @@ if __name__ == "__main__":
             success, need_crop = crop_images_in_directory(
                 src_dir=src_dir,
                 tar_dir=target_dir,
-                tar_width=TARGET_IMG_WIDTH,
-                tar_height=TARGET_IMG_HEIGHT
+                tar_width=CROP_WIDTH,  
+                tar_height=CROP_HEIGHT  
             )
             if not success:
                 faulty_trajectories.append(src_dir)

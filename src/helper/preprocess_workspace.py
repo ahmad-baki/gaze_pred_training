@@ -115,9 +115,9 @@ TARGET_GAZE_WIDTH = 16
 # SOURCE_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/raw')
 # TARGET_GAZE_DIR = Path('/home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/test/input/processed')
 
-SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped/3d')
+SOURCE_PAR_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_cropped_all/3d')
 SUB_DIR = Path('sensors/continuous_device_')
-TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_processed/3d')
+TARGET_DIR = Path('/pfs/work9/workspace/scratch/ka_eb5961-holo2gaze/new_frame/data_processed_all/3d')
 
 if __name__ == "__main__":
     print("Starting preprocessing...")
@@ -154,7 +154,7 @@ if __name__ == "__main__":
                 tar_dir=target_dir,
                 tar_width=TARGET_GAZE_WIDTH,
                 tar_height=TARGET_GAZE_HEIGHT,
-                flip_vert=True  # Set to False if you don't want to flip the y-coordinate
+                flip_vert=True  # Set to False if you don't want to flip the y-coordinate <--- TODO: this should be False, but alrady trained model on flipped images
             )
             
             if success is None:

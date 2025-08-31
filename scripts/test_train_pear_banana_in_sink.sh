@@ -12,4 +12,4 @@
 module load devel/miniforge
 conda activate gaze_pred_train
 cd /home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/src
-python3 main.py
+python3 main.py dataset=gaze_dataset_workspace_pear_banana_in_sink

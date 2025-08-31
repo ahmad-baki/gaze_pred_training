@@ -5,7 +5,7 @@ defaults:
   - dataset@dataset: gaze_dataset_workspace_pear_banana_in_sink
 
 wandb:
-  project: test # gaze_pred_training        # replace with your project name
+  project: gaze_pred_training # gaze_pred_training        # replace with your project name
   entity: ahmad-baki-karlsruhe-institute-of-technology  # replace with your WandB entity
 
 # ────────────────────────────────────────────────────────

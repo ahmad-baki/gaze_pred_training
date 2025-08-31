@@ -13,5 +13,5 @@
 module load devel/miniforge
 conda activate gaze_pred_train
 cd /home/ka/ka_anthropomatik/ka_eb5961/gaze_pred_training/src/helper
-python3 crop_data.py
-python3 preprocess_workspace.py
+python3 -u crop_data2.py
+python3 -u preprocess_workspace.py
